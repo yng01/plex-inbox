@@ -38,6 +38,18 @@ def build_services(
     """Assemble every collaborator the handlers need (all injectable in tests)."""
     data_dir = config.data_dir
     data_dir.mkdir(parents=True, exist_ok=True)
+    # Verify the volume is actually writable *by this process* — a bind mount
+    # can exist but be owned by another uid, which used to surface much later
+    # as a cryptic PermissionError on the first download.
+    try:
+        probe = data_dir / ".write-test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        raise RuntimeError(
+            f"DATA_DIR '{data_dir}' is not writable by the bot process: {exc}. "
+            f"Fix ownership, e.g. on the host: chown -R $(id -u) <path-to-data-dir>"
+        ) from exc
     if http is None:
         http = httpx.AsyncClient(timeout=30.0)
     archive = Archive(data_dir)
@@ -130,6 +142,8 @@ def run(config: Config | None = None) -> None:
         .post_shutdown(on_post_shutdown)
         .build()
     )
+    # handlers read services via context.bot_data["svc"]; wire it before the first update
+    app.bot_data["svc"] = svc
     handlers.register(app, svc)
     app.run_polling(drop_pending_updates=True)
 

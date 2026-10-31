@@ -106,6 +106,12 @@ class FakeResponse:
         self.status_code = status_code
         self.content = content
 
+    @property
+    def text(self):
+        if isinstance(self.content, (bytes, bytearray)):
+            return self.content.decode("utf-8", "replace")
+        return self.content
+
 
 class FakeHttp:
     def __init__(self, get_status=200, get_content=b"imgbytes", post_status=200):
@@ -115,8 +121,8 @@ class FakeHttp:
         self.gets: list[dict] = []
         self.posts: list[dict] = []
 
-    async def get(self, url, timeout=None, follow_redirects=False):
-        self.gets.append({"url": url, "timeout": timeout})
+    async def get(self, url, timeout=None, follow_redirects=False, headers=None):
+        self.gets.append({"url": url, "timeout": timeout, "headers": dict(headers or {})})
         return FakeResponse(self.get_status, self.get_content)
 
     async def post(self, url, headers=None, timeout=None):

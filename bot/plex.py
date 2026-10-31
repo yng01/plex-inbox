@@ -179,6 +179,8 @@ class Sidecar:
     audio_tracks: list[dict]  # [{"language":..,"codec":..}]
     genres: list[str]
     tags: list[str]
+    user_id: int | None = None  # Telegram numeric id of the requester
+    username: str | None = None  # Telegram username of the requester (if any)
 
 
 def write_sidecar(path: Path, sc: Sidecar) -> Path:
@@ -191,6 +193,8 @@ def write_sidecar(path: Path, sc: Sidecar) -> Path:
         "title": sc.title,
         "url": sc.url,
         "requestor": sc.requestor,
+        "user_id": sc.user_id,
+        "username": sc.username,
         "added_at": sc.added_at,
         "final_path": sc.final_path,
         "size_bytes": sc.size_bytes,
@@ -206,23 +210,73 @@ def write_sidecar(path: Path, sc: Sidecar) -> Path:
     return p
 
 
-def pick_poster_url(info) -> str | None:
-    """Best-effort channel/uploader avatar URL from probe fields."""
+#: probe fields that carry a channel/uploader *avatar* (best first)
+_AVATAR_KEYS = (
+    "channel_favicon",
+    "uploader_avatar",
+    "uploader_image",
+    "channel_image",
+    "channel_logo",
+    "uploader_logo",
+    "avatar",
+)
+
+
+def pick_avatar_url(info) -> str | None:
+    """Avatar URL from probe fields, or None (no video-thumbnail fallback)."""
     raw = getattr(info, "raw", {}) or {}
-    for key in (
-        "channel_favicon",
-        "uploader_avatar",
-        "uploader_image",
-        "channel_image",
-        "channel_logo",
-        "uploader_logo",
-        "avatar",
-        "thumbnail",
-    ):
+    for key in _AVATAR_KEYS:
         v = (raw.get(key) or "").strip()
         if v.startswith(("http://", "https://")):
             return v
     return None
+
+
+def pick_poster_url(info) -> str | None:
+    """Best-effort channel/uploader avatar URL; falls back to the video thumbnail."""
+    raw = getattr(info, "raw", {}) or {}
+    return (
+        pick_avatar_url(info)
+        or _first_http_url(raw.get("thumbnail"))
+        or _first_http_url(getattr(info, "thumbnail", None))
+    )
+
+
+def _first_http_url(v) -> str | None:
+    v = (v or "").strip() if isinstance(v, str) else ""
+    return v if v.startswith(("http://", "https://")) else None
+
+
+_OG_IMAGE_RE = re.compile(r'<meta property="og:image" content="([^"]+)"')
+_ITEMPROP_LOGO_RE = re.compile(r'itemprop="logo"[^>]*content="([^"]+)"')
+
+
+async def resolve_youtube_avatar_url(
+    http, channel_id: str | None, timeout: float = 15.0
+) -> str | None:
+    """Fetch a YouTube channel page and pull its avatar (``og:image``).
+
+    Best-effort: any failure (no id, network, consent wall, no match) -> None.
+    """
+    if not channel_id:
+        return None
+    try:
+        resp = await http.get(
+            f"https://www.youtube.com/channel/{channel_id}",
+            headers={"Accept-Language": "en", "Cookie": "CONSENT=YES+1"},
+            timeout=timeout,
+            follow_redirects=True,
+        )
+    except Exception:
+        return None
+    if getattr(resp, "status_code", None) != 200:
+        return None
+    text = getattr(resp, "text", "") or ""
+    m = _ITEMPROP_LOGO_RE.search(text) or _OG_IMAGE_RE.search(text)
+    if not m:
+        return None
+    url = m.group(1).strip()
+    return url if url.startswith(("http://", "https://")) else None
 
 
 async def download_image(http, url: str, dest: Path, timeout: float = 30.0) -> bool:

@@ -26,11 +26,15 @@ RUN pip install \
 # Bot code
 COPY bot/ ./bot/
 
-# Run as non-root; /data holds the library that Plex reads
+# /data holds the library that Plex reads
 RUN useradd --create-home --uid 1000 bot \
     && mkdir -p /data \
     && chown -R bot:bot /data /app
-USER bot
+# We run as the image's root user on purpose: under rootless Docker the
+# container's root IS the host user who owns the bind-mounted ./data volume,
+# so this keeps the library writable (a uid-1000 user would map to an
+# unrelated host uid and get Permission denied on the mount).
+USER root
 
 ENV DATA_DIR=/data
 VOLUME /data

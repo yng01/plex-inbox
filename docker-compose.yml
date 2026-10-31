@@ -1,6 +1,7 @@
 # Usage:
 #   cp .env.example .env        # fill in BOT_TOKEN (and ALLOWED_USER_IDS)
-#   docker compose up -d --build          # run the bot
+#   docker compose up -d --build bot      # run the bot (name the service: `up -d` alone
+#                                         # would also start the one-shot `test` job)
 #   docker compose run --rm --build test # run the test suite (no Telegram token needed)
 
 services:

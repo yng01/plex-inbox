@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 import uuid
@@ -27,6 +28,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Sequence
+
+from telegram.error import BadRequest
 
 from . import plex
 from .config import Config
@@ -37,6 +40,8 @@ from .store import Archive
 VIDEO_EXTS = {"mkv", "mp4", "webm", "mov", "m4v", "flv", "avi", "ogv", "ts"}
 
 JOURNAL_PREFIX = ".inflight-"
+
+log = logging.getLogger("ytbot")
 
 
 # --- jobs ------------------------------------------------------------------
@@ -52,12 +57,22 @@ class Job:
     requestor: str
     base: str  # sanitized video stem (no extension)
     target_dir: Path
-    audio_mode: str  # "all" | "best"
+    audio_mode: str  # "all" | "orig" | "best"
     state: str = "queued"  # queued | downloading | done | failed | cancelled
     pct: float = 0.0
     speed: str = ""
     eta: str = ""
     position: int = 0
+    user_id: int | None = None  # Telegram numeric id of the requester
+    username: str | None = None  # Telegram username of the requester (if any)
+    # Cumulative progress across *all* files of the job (video + N audio).
+    # yt-dlp restarts its byte counter per file, so we fold per-file samples
+    # into whole-job totals here; see :func:`update_progress`.
+    _bytes_done: float = field(default=0.0, repr=False)
+    _cur_bytes: float = field(default=0.0, repr=False)
+    _cur_total: float | None = field(default=None, repr=False)
+    _totals_known: float = field(default=0.0, repr=False)
+    _shown_pct: float = field(default=0.0, repr=False)
     error: str = ""
     final_path: str = ""
     size_bytes: int = 0
@@ -163,33 +178,121 @@ Spawner = Callable[[Sequence[str]], Awaitable[object]]
 # --- pure helpers -----------------------------------------------------------
 
 
-def format_args(video_format: str | None, audio_mode: str) -> list[str]:
+def format_args(
+    video_format: str | None,
+    audio_mode: str,
+    language: str | None = None,
+) -> list[str]:
     """Build the yt-dlp format-selection flags.
 
     * all  -> best video + *all* audio-only formats, merged (mkv carries them all)
-    * best -> best video + single best audio (or the best combined format)
-    * a user VIDEO_FORMAT override wins over both.
+    * orig -> best video + the *original-language* audio track if the probe knows
+      the video's language (``bv*+ba[lang=xx]/ba/b``), else the single best audio
+    * best -> best video + single best audio (alias of ``orig`` without a language)
+    * a user VIDEO_FORMAT override wins over all of the above.
     """
     if video_format:
         return ["-f", video_format]
     if audio_mode == "all":
         return ["-f", "bv*+mergeall[vcodec=none]", "--audio-multistreams"]
+    if audio_mode == "orig" and language:
+        return ["-f", f"bv*+ba[lang={language}]/ba/b"]
     return ["-f", "bv*+ba/b"]
 
 
-PROGRESS_RE = re.compile(r"PROG\s+(?P<pct>\S+)\s+(?P<speed>\S+)\s+(?P<eta>.+)$")
+# Progress line (one per --progress-delta tick), built from the template in
+# :meth:`DownloadManager._cmd`. Tokens are pipe-separated so they never collide
+# with free-text values; DL/TOT/EST are byte counters that make a *cumulative*,
+# whole-job percent possible (yt-dlp otherwise restarts at 0% per file).
+PROGRESS_MARK = "PROG|"
+
+#: speed/ETA values yt-dlp emits when it does not know them yet
+_NA_VALUES = {"", "NA", "None", "Unknown", "Unknown B/s", "-"}
 
 
-def parse_progress(line: str) -> tuple[float, str, str] | None:
-    """Parse a ``download: PROG 45.0% 1.2MiB/s 00:10`` line; None otherwise."""
-    m = PROGRESS_RE.search(line)
-    if not m:
+def _clean_val(s: str) -> str:
+    s = (s or "").strip()
+    return "" if s in _NA_VALUES else s
+
+
+def _to_number(s: str) -> float | None:
+    s = (s or "").strip().rstrip("%")
+    if s in _NA_VALUES:
         return None
     try:
-        pct = float(m.group("pct").rstrip("%").strip())
+        v = float(s)
+        return v if v >= 0 else None
     except ValueError:
-        pct = 0.0
-    return pct, m.group("speed").strip(), m.group("eta").strip()
+        return None
+
+
+def _to_bytes(s: str) -> float | None:
+    v = _to_number(s)
+    return v if v and v > 0 else None
+
+
+def parse_progress(line: str) -> tuple[float, str, str, float | None, float | None] | None:
+    """Parse a progress line; ``None`` when the line is not one.
+
+    Returns ``(pct, speed, eta, downloaded_bytes, total_bytes)``. The byte
+    fields are ``None`` when yt-dlp did not report them (unknown size).
+    """
+    i = line.find(PROGRESS_MARK)
+    if i < 0:
+        return None
+    toks = line[i + len(PROGRESS_MARK) :].split("|")
+    if len(toks) < 6:
+        return None
+    pct = _to_number(toks[0])
+    speed = _clean_val(toks[1])
+    eta = _clean_val(toks[2])
+    dl = tot = est = None
+    for tok in toks[3:]:
+        key, _, val = tok.partition("=")
+        if key == "DL":
+            dl = _to_bytes(val)
+        elif key == "TOT":
+            tot = _to_bytes(val)
+        elif key == "EST":
+            est = _to_bytes(val)
+    if pct is None and dl is None:
+        return None
+    return pct or 0.0, speed, eta, dl, (tot if tot is not None else est)
+
+
+def update_progress(
+    job: Job, raw_pct: float, dl: float | None, total: float | None
+) -> float:
+    """Fold one per-file progress sample into the job's whole-job percent.
+
+    A ``dl`` smaller than the previous sample means yt-dlp started the next
+    file (its counter restarted); the finished file's bytes are banked into
+    ``_bytes_done``. The result never moves backwards — revealing a new file's
+    size must not drag a bar that was at 100% back down. When no size is ever
+    known, the per-file ``raw_pct`` is used as a fallback.
+    """
+    if dl is not None:
+        if job._cur_bytes > 0 and dl < job._cur_bytes:
+            finished = (
+                job._cur_total if job._cur_total is not None else job._cur_bytes
+            )
+            job._bytes_done += finished
+            if job._cur_total is not None:
+                job._totals_known += job._cur_total
+            job._cur_bytes = 0.0
+            job._cur_total = None
+        job._cur_bytes = max(job._cur_bytes, dl)
+    if total is not None:
+        job._cur_total = max(job._cur_total or 0.0, total)
+    total_all = job._totals_known + (job._cur_total or 0.0)
+    if total_all > 0:
+        pct = min(100.0, 100.0 * (job._bytes_done + job._cur_bytes) / total_all)
+    else:
+        pct = raw_pct
+    if pct < job._shown_pct:
+        pct = job._shown_pct
+    job._shown_pct = pct
+    return pct
 
 
 def _now_iso() -> str:
@@ -313,6 +416,9 @@ class DownloadManager:
         self._workers: list[asyncio.Task] = []
         self._stopping = False
         self._notify_at: dict[str, float] = {}
+        # Last text displayed per job: re-sending an identical message makes
+        # Telegram reject the edit with "Message is not modified".
+        self._last_text: dict[str, str] = {}
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -425,15 +531,19 @@ class DownloadManager:
                 if job.state not in ("done", "failed", "cancelled"):
                     job.state = "failed"
                 job.error = job.error or str(exc)[:300]
+                log.error("worker: job %s raised: %s", job.id, exc, exc_info=exc)
                 await self._safe_notify(job, force=True)
             finally:
                 self._queue.task_done()
+                self._last_text.pop(job.id, None)
 
     async def _safe_notify(self, job: Job, force: bool = False) -> None:
         try:
             await self._notify(job, force=force)
-        except Exception:
-            pass
+        except Exception as exc:
+            log.warning(
+                "notify failed for job %s (state=%s): %s", job.id, job.state, exc
+            )
 
     async def _notify(self, job: Job, force: bool = False) -> None:
         """Edit the job's single status message (throttled for progress)."""
@@ -471,12 +581,23 @@ class DownloadManager:
             text = t(lang, "cancelled")
         else:
             return
-        await bot.edit_message_text(
-            chat_id=chat_id, message_id=msg_id, text=text
-        )
+        if self._last_text.get(job.id) == text:
+            return  # user already sees exactly this — skip the no-op edit
+        self._last_text[job.id] = text
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id, message_id=msg_id, text=text
+            )
+        except BadRequest:
+            # "Message is not modified" (or a lost edit race): cosmetic — a
+            # status edit must never be able to fail the download itself.
+            log.debug(
+                "status edit skipped for job %s: message unchanged", job.id
+            )
 
     def _cmd(self, job: Job) -> list[str]:
-        fmt = format_args(self.config.video_format, job.audio_mode)
+        lang = job.info.language if job.info is not None else None
+        fmt = format_args(self.config.video_format, job.audio_mode, lang)
         out = job.target_dir / (job.base + ".%(ext)s")
         return [
             self.ytdlp_bin,
@@ -486,7 +607,9 @@ class DownloadManager:
             "--progress-delta",
             "1",
             "--progress-template",
-            "download: PROG %(progress._percent_str)s %(speed_str)s %(eta_str)s",
+            "download: PROG|%(progress._percent_str)s|%(progress._speed_str)s|"
+            "%(progress._eta_str)s|DL=%(progress.downloaded_bytes)s|"
+            "TOT=%(progress.total_bytes)s|EST=%(progress.total_bytes_estimate)s",
             "--output",
             str(out),
             *fmt,
@@ -496,9 +619,16 @@ class DownloadManager:
     async def _run(self, job: Job) -> None:
         job.state = "downloading"
         job.error = ""
-        await self._notify(job, force=True)
+        await self._safe_notify(job, force=True)
         pre = _snapshot(job.target_dir)
         jpath = write_journal(job)
+        log.info(
+            "job %s started: %r (audio_mode=%s) -> %s",
+            job.id,
+            job.title[:80],
+            job.audio_mode,
+            job.url,
+        )
         proc = None
         try:
             proc = await self.spawner(self._cmd(job))
@@ -506,8 +636,10 @@ class DownloadManager:
             async for line in proc.lines():
                 p = parse_progress(line)
                 if p:
-                    job.pct, job.speed, job.eta = p
-                    await self._notify(job)
+                    raw_pct, speed, eta, dl, total = p
+                    job.pct = update_progress(job, raw_pct, dl, total)
+                    job.speed, job.eta = speed, eta
+                    await self._safe_notify(job)
                 elif job.state == "cancelled":
                     try:
                         proc.kill()
@@ -517,6 +649,7 @@ class DownloadManager:
             rc = await proc.wait()
             if job.state == "cancelled":
                 self._cleanup(job, pre)  # cancel() already notified the user
+                log.info("job %s cancelled", job.id)
                 return
             if rc != 0:
                 job.state = "failed"
@@ -527,6 +660,9 @@ class DownloadManager:
                     pass
                 job.error = (tail or f"exit code {rc}")[:300]
                 self._cleanup(job, pre)
+                log.warning(
+                    "job %s failed (rc=%s): %s", job.id, rc, job.error
+                )
                 await self._safe_notify(job, force=True)
                 return
             await self._finalize(job)
@@ -551,6 +687,7 @@ class DownloadManager:
                 job.state = "failed"
             job.error = str(exc)[:300]
             self._cleanup(job, pre)
+            log.warning("job %s crashed: %s", job.id, exc, exc_info=exc)
             await self._safe_notify(job, force=True)
         finally:
             _remove(jpath)
@@ -589,12 +726,18 @@ class DownloadManager:
         if video is None:
             job.state = "failed"
             job.error = "download finished but no output file was found"
+            log.warning("job %s: no output file found in %s", job.id, d)
             await self._safe_notify(job, force=True)
             return
         size = video.stat().st_size
 
         tracks = list(info.audio_tracks) if info else []
-        embedded = tracks if job.audio_mode == "all" else tracks[:1]
+        if job.audio_mode == "all":
+            embedded = tracks
+        else:
+            # single track: the original-language one when the probe knows it
+            lang = info.language if info is not None else None
+            embedded = [a for a in tracks if a.language == lang] or tracks[:1]
         job.audio_count = len(embedded)
 
         # thumbnail (stem must match the video file)
@@ -602,8 +745,18 @@ class DownloadManager:
             await plex.download_image(
                 self.http, info.thumbnail, d / f"{job.base}.jpg"
             )
-        # channel poster (best-effort)
-        poster_url = plex.pick_poster_url(info) if info else None
+        # channel poster (best-effort), best source first:
+        #   1. avatar field from the probe (channel_favicon & co.)
+        #   2. YouTube channel page (og:image) when we have a channel id
+        #   3. the video thumbnail (keeps poster.jpg always populated)
+        poster_url = plex.pick_avatar_url(info) if info else None
+        if not poster_url and info is not None and self.http is not None:
+            raw = info.raw or {}
+            cid = info.channel_id or raw.get("channel_id") or raw.get("uploader_id")
+            if cid and re.search(r"youtube\.", info.url or "", re.I):
+                poster_url = await plex.resolve_youtube_avatar_url(self.http, cid)
+        if not poster_url and info is not None:
+            poster_url = plex.pick_poster_url(info)
         if poster_url and self.http is not None:
             await plex.download_image(self.http, poster_url, d / "poster.jpg")
 
@@ -643,6 +796,8 @@ class DownloadManager:
                     title=info.title,
                     url=job.url,
                     requestor=job.requestor,
+                    user_id=job.user_id,
+                    username=job.username,
                     added_at=added_at,
                     final_path=video.as_posix(),
                     size_bytes=size,
@@ -670,4 +825,11 @@ class DownloadManager:
         job.final_path = video.as_posix()
         job.size_bytes = size
         job.state = "done"
-        await self._notify(job, force=True)
+        log.info(
+            "job %s done: %s (%s, %d audio track(s))",
+            job.id,
+            video.name,
+            human_size(size),
+            job.audio_count,
+        )
+        await self._safe_notify(job, force=True)

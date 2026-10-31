@@ -64,8 +64,10 @@ class UrlInfo:
     site: str
     url: str
     channel: str = "unknown"
+    channel_id: str | None = None  # e.g. YouTube channel id (avatar fallback lookup)
     duration: float | None = None
     resolution: str | None = None
+    language: str | None = None  # video's own language, e.g. "ar" (for original-audio selection)
     thumbnail: str | None = None
     description: str = ""
     year: int | None = None
@@ -235,8 +237,10 @@ def parse_probe(raw: dict) -> UrlInfo:
         site=site,
         url=url,
         channel=channel,
+        channel_id=_clean(raw.get("channel_id") or raw.get("uploader_id")) or None,
         duration=raw.get("duration"),
         resolution=_resolution_from(raw),
+        language=_clean(raw.get("language")) or None,
         thumbnail=_clean(raw.get("thumbnail")) or None,
         description=_clean(raw.get("description")),
         year=_year_from(raw),

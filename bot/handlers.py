@@ -8,6 +8,7 @@ always rendered as a short, user-safe error — handlers never raise into the fr
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -20,6 +21,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+
+log = logging.getLogger("ytbot")
 
 from . import plex, probe as probe_mod
 from .config import Config
@@ -85,9 +88,9 @@ def allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return False
 
 
-def _answer(q: Update) -> None:
+async def _answer(q: Update) -> None:
     try:
-        q.callback_query.answer()
+        await q.callback_query.answer()
     except Exception:
         pass
 
@@ -217,7 +220,7 @@ async def _render_confirm(
             ]
         )
         if s.config.multi_audio:
-            rows.append([InlineKeyboardButton(t(lang, "btn_best_audio"), callback_data="db")])
+            rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
         for i, e in enumerate(chunk):
             idx = start + i
             label = f"{idx + 1}. {e.title[:30]}"
@@ -238,11 +241,12 @@ async def _render_confirm(
             rows.append(
                 [
                     InlineKeyboardButton(t(lang, "btn_download_all"), callback_data="da"),
-                    InlineKeyboardButton(t(lang, "btn_best_audio"), callback_data="db"),
+                    InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db"),
                 ]
             )
         else:
-            rows.append([InlineKeyboardButton(t(lang, "btn_download_all"), callback_data="db")])
+            # single-track mode: original audio (the only option without MULTI_AUDIO)
+            rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
         rows.append([InlineKeyboardButton(t(lang, "btn_cancel"), callback_data="c")])
         markup = InlineKeyboardMarkup(rows)
 
@@ -295,6 +299,8 @@ async def _add_job(
     job.lang = lang
     job.bot = context.bot
     job.chat_id = user_id(update)
+    job.user_id = user_id(update)
+    job.username = update.effective_user.username
     # the one status message the manager will edit through the lifecycle
     text = t(lang, "queued", pos=job.position)
     msg = await update.effective_message.reply_text(text)
@@ -558,14 +564,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         # confirm flow
         if data in ("da", "db"):
-            mode = "all" if data == "da" else "best"
+            mode = "all" if data == "da" else "orig"
             if not s.config.multi_audio:
-                mode = "best"
+                mode = "orig"
             await _enqueue(update, context, mode)
             return
         if data.startswith("e") and data[1:].isdigit():
             idx = int(data[1:])
-            mode = "all" if s.config.multi_audio else "best"
+            mode = "all" if s.config.multi_audio else "orig"
             await _enqueue(update, context, mode, entry_idx=idx)
             return
         if data == "np" or data == "bp":
@@ -629,18 +635,42 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         # fallback -> menu
         await cmd_menu(update, context)
-    except Exception:
-        _answer(update)
+    except Exception as exc:
+        log.warning("callback %r failed: %s", data, exc, exc_info=exc)
+        await _answer(update)
         try:
             if q and q.message:
                 await q.message.reply_text(L(context, update, "error_generic"))
-        except Exception:
-            pass
+        except Exception as exc2:
+            log.warning("error reply after callback failure also failed: %s", exc2)
+
+
+# --- last-resort error handling --------------------------------------------
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Catch anything that slips past the per-handler guards.
+
+    Log the real error (server-side) and send a short, user-safe reply when we
+    can identify the conversation. Never raises into the framework.
+    """
+    log.error("unhandled error: %s", context.error, exc_info=context.error)
+    try:
+        if not isinstance(update, Update):
+            return
+        msg = update.effective_message
+        if msg is None:
+            return
+        s = svc(context)
+        lang = s.lang_store.get(update.effective_user.id)
+        await msg.reply_text(t(lang, "error_generic"))
+    except Exception:
+        pass
 
 
 # --- registration ----------------------------------------------------------
 
 def register(app, s: Services) -> None:
+    app.add_error_handler(on_error)
     app.add_handler(CommandHandler("start", cmd_menu))
     app.add_handler(CommandHandler("menu", cmd_menu))
     app.add_handler(CommandHandler("add", cmd_add))

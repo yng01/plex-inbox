@@ -14,6 +14,8 @@ import pytest
 from bot.config import load_config
 from bot.probe import AudioTrack, UrlInfo
 from bot.store import Archive
+from telegram.error import BadRequest
+
 from bot.ytdlp import (
     DownloadManager,
     cleanup_leftovers,
@@ -88,21 +90,39 @@ def test_format_args_best_only():
     assert format_args(None, "best") == ["-f", "bv*+ba/b"]
 
 
+def test_format_args_orig_prefers_original_language():
+    assert format_args(None, "orig", "ar") == ["-f", "bv*+ba[lang=ar]/ba/b"]
+
+
+def test_format_args_orig_without_language_falls_back_to_best():
+    assert format_args(None, "orig") == ["-f", "bv*+ba/b"]
+
+
 @pytest.mark.parametrize("mode", ["all", "best"])
 def test_format_args_user_override_wins(mode):
     assert format_args("137+140", mode) == ["-f", "137+140"]
 
 
 def test_parse_progress_line():
-    assert parse_progress("download: PROG 45.0% 1.2MiB/s 00:10") == (
-        45.0,
-        "1.2MiB/s",
-        "00:10",
-    )
+    assert parse_progress(
+        "download: PROG|45.0%|1.2MiB/s|00:10|DL=1048576|TOT=4194304|EST=NA"
+    ) == (45.0, "1.2MiB/s", "00:10", 1048576.0, 4194304.0)
 
 
 def test_parse_progress_full():
-    assert parse_progress("download: PROG 100.0% 2.0MiB/s 00:00")[0] == 100.0
+    assert (
+        parse_progress("download: PROG|100.0%|2.0MiB/s|00:00|DL=1|TOT=1|EST=NA")[0]
+        == 100.0
+    )
+
+
+def test_parse_progress_na_becomes_empty_and_estimate_is_used():
+    pct, speed, eta, dl, total = parse_progress(
+        "download: PROG|5.0%|NA|NA|DL=10|TOT=NA|EST=200"
+    )
+    assert (pct, speed, eta) == (5.0, "", "")
+    assert dl == 10.0
+    assert total == 200.0  # TOT unknown -> EST is used
 
 
 def test_parse_progress_ignores_plain_ytdlp_lines():
@@ -114,8 +134,11 @@ def test_parse_progress_ignores_plain_ytdlp_lines():
 
 
 def test_parse_progress_bad_percent_falls_back_to_zero():
-    pct, speed, eta = parse_progress("download: PROG oops 1.0MiB/s 00:05")
+    pct, speed, eta, dl, total = parse_progress(
+        "download: PROG|oops|1.0MiB/s|00:05|DL=5|TOT=10|EST=NA"
+    )
     assert (pct, speed, eta) == (0.0, "1.0MiB/s", "00:05")
+    assert (dl, total) == (5.0, 10.0)
 
 
 @pytest.mark.parametrize(
@@ -196,6 +219,15 @@ def test_cmd_best_mode_omits_multistreams(tmp_path):
     assert "--audio-multistreams" not in cmd
 
 
+def test_cmd_orig_mode_selects_original_language(tmp_path):
+    cfg = make_config(tmp_path)
+    mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
+    job = mgr.enqueue(make_info(language="ar"), requestor="ali", audio_mode="orig")
+    cmd = mgr._cmd(job)
+    assert cmd[cmd.index("-f") + 1] == "bv*+ba[lang=ar]/ba/b"
+    assert "--audio-multistreams" not in cmd
+
+
 def test_cmd_video_format_override(tmp_path):
     cfg = make_config(tmp_path, VIDEO_FORMAT="137+140")
     mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
@@ -251,8 +283,8 @@ async def test_success_path_writes_full_metadata(tmp_path):
         FakeLineProc(
             lines=[
                 "[download] Destination: Great Video (2024).mkv",
-                "download: PROG 25.0% 1.2MiB/s 00:10",
-                "download: PROG 100.0% 1.5MiB/s 00:00",
+                "download: PROG|25.0%|1.2MiB/s|00:10|DL=1048576|TOT=4194304|EST=NA",
+                "download: PROG|100.0%|1.5MiB/s|00:00|DL=4194304|TOT=4194304|EST=NA",
             ],
             returncode=0,
             on_finish=on_finish,
@@ -260,6 +292,8 @@ async def test_success_path_writes_full_metadata(tmp_path):
     )
     bot = FakeBot()
     job = _wire(mgr.enqueue(make_info(), requestor="ali", audio_mode="all"), bot)
+    job.user_id = 555
+    job.username = "ali"
 
     await mgr.start()
     try:
@@ -290,6 +324,8 @@ async def test_success_path_writes_full_metadata(tmp_path):
 
     sc = json.loads((d / "abc123.info.json").read_text(encoding="utf-8"))
     assert sc["requestor"] == "ali"
+    assert sc["user_id"] == 555
+    assert sc["username"] == "ali"
     assert sc["final_path"] == video.as_posix()
     assert sc["size_bytes"] == 4096
     assert [t["language"] for t in sc["audio_tracks"]] == ["en", "ar"]
@@ -321,7 +357,7 @@ async def test_best_mode_embeds_single_track_and_omits_audio_tags(tmp_path):
     d.mkdir(parents=True, exist_ok=True)
     spawner.push(
         FakeLineProc(
-            lines=["download: PROG 100.0% 1.0MiB/s 00:00"],
+            lines=["download: PROG|100.0%|1.0MiB/s|00:00|DL=100|TOT=100|EST=NA"],
             on_finish=lambda: (d / "Great Video (2024).mp4").write_bytes(b"y" * 100),
         )
     )
@@ -345,6 +381,41 @@ async def test_best_mode_embeds_single_track_and_omits_audio_tags(tmp_path):
     assert sc["requestor"] == "user:999"
 
 
+async def test_poster_prefers_youtube_channel_avatar_over_thumbnail(tmp_path):
+    """Probe without an avatar field -> fetch the channel page, use its avatar."""
+    cfg = make_config(tmp_path)
+    archive = Archive(cfg.data_dir)
+    spawner = RecordingSpawner()
+    html = (
+        b"<html><head>"
+        b'<meta property="og:image" content="https://yt3.example/av.jpg">'
+        b"</head></html>"
+    )
+    http = FakeHttp(get_status=200, get_content=html)
+    mgr = DownloadManager(cfg, archive, spawner=spawner, http=http)
+
+    d = cfg.data_dir / "YouTube" / "Cool Channel"
+    d.mkdir(parents=True, exist_ok=True)
+    spawner.push(
+        FakeLineProc(
+            lines=["download: PROG|100.0%|1.0MiB/s|00:00|DL=100|TOT=100|EST=NA"],
+            on_finish=lambda: (d / "Great Video (2024).mp4").write_bytes(b"y" * 100),
+        )
+    )
+    info = make_info(raw={}, channel_id="UC123", thumbnail=None)
+    job = _wire(mgr.enqueue(info, requestor="ali", audio_mode="all"), FakeBot())
+
+    await mgr.start()
+    try:
+        assert await mgr.wait_idle(timeout=5.0)
+    finally:
+        await mgr.stop(grace=0.2)
+
+    assert job.state == "done"
+    assert (d / "poster.jpg").exists()
+    assert any(g["url"] == "https://www.youtube.com/channel/UC123" for g in http.gets)
+
+
 async def test_failed_job_reports_reason_and_removes_partials(tmp_path):
     cfg = make_config(tmp_path)
     archive = Archive(cfg.data_dir)
@@ -361,7 +432,7 @@ async def test_failed_job_reports_reason_and_removes_partials(tmp_path):
 
     spawner.push(
         FakeLineProc(
-            lines=["download: PROG 12.0% 1.0MiB/s 00:40"],
+            lines=["download: PROG|12.0%|1.0MiB/s|00:40|DL=122880|TOT=1024000|EST=NA"],
             returncode=1,
             stderr="ERROR: Could not find a version that satisfies the requirement",
             on_finish=on_finish,
@@ -385,6 +456,130 @@ async def test_failed_job_reports_reason_and_removes_partials(tmp_path):
     assert bot.edits[-1][2].startswith("⚠️ Failed:")
 
 
+# --- status-message edits: no-op edits are skipped, rejections are fatal-proof
+# ----------------------------------------------------------------------------
+
+
+class StrictBot(FakeBot):
+    """FakeBot that, like Telegram, rejects an edit whose text is unchanged."""
+
+    def __init__(self):
+        super().__init__()
+        self.last: str | None = None
+
+    async def edit_message_text(self, chat_id, message_id, text, **kw):
+        if text == self.last:
+            raise BadRequest(
+                "Message is not modified: specified new message content and "
+                "reply markup are exactly the same as a current content and "
+                "reply markup of the message"
+            )
+        self.last = text
+        await super().edit_message_text(chat_id, message_id, text, **kw)
+
+
+class AlwaysRejectBot(FakeBot):
+    """FakeBot that rejects *every* edit (flaky Telegram / lost race)."""
+
+    async def edit_message_text(self, chat_id, message_id, text, **kw):
+        raise BadRequest("Message is not modified")
+
+
+async def test_repeated_identical_progress_is_not_re_edited(tmp_path):
+    """Several progress lines rendering the same status text must produce a
+    single edit — re-editing identical content is what made Telegram answer
+    'Message is not modified'."""
+    cfg = make_config(tmp_path)
+    archive = Archive(cfg.data_dir)
+    spawner = RecordingSpawner()
+    mgr = DownloadManager(
+        cfg, archive, spawner=spawner, http=FakeHttp(), notify_interval=0
+    )
+
+    d = cfg.data_dir / "YouTube" / "Cool Channel"
+    d.mkdir(parents=True, exist_ok=True)
+    video = d / "Great Video (2024).mkv"
+
+    def on_finish():
+        video.write_bytes(b"x" * 4096)
+
+    # 0% with no speed/ETA renders exactly the same text as the initial
+    # forced "downloading" edit.
+    spawner.push(
+        FakeLineProc(
+            lines=[
+                "download: PROG|0.0%|NA|NA|DL=0|TOT=4096|EST=NA",
+                "download: PROG|0.0%|NA|NA|DL=0|TOT=4096|EST=NA",
+                "download: PROG|0.0%|NA|NA|DL=0|TOT=4096|EST=NA",
+                "download: PROG|100.0%|1.5MiB/s|00:00|DL=4096|TOT=4096|EST=NA",
+            ],
+            returncode=0,
+            on_finish=on_finish,
+        )
+    )
+    bot = StrictBot()
+    job = _wire(mgr.enqueue(make_info(), requestor="ali", audio_mode="all"), bot)
+
+    await mgr.start()
+    try:
+        assert await mgr.wait_idle(timeout=5.0)
+    finally:
+        await mgr.stop(grace=0.2)
+
+    assert job.state == "done"
+    assert video.exists()
+    texts = [e[2] for e in bot.edits]
+    # one "downloading 0%" + one "100%" progress + one "done" — no no-op edits
+    assert len(bot.edits) == 3
+    assert "0%" in texts[0]
+    assert "100%" in texts[1]
+    assert texts[2].startswith("✅ Done")
+
+
+async def test_telegram_edit_rejection_never_fails_the_job(tmp_path):
+    """Regression: 'Message is not modified' used to bubble up and fail the
+    whole download. A status-edit rejection must stay cosmetic."""
+    cfg = make_config(tmp_path)
+    archive = Archive(cfg.data_dir)
+    spawner = RecordingSpawner()
+    mgr = DownloadManager(
+        cfg, archive, spawner=spawner, http=FakeHttp(), notify_interval=0
+    )
+
+    d = cfg.data_dir / "YouTube" / "Cool Channel"
+    d.mkdir(parents=True, exist_ok=True)
+    video = d / "Great Video (2024).mkv"
+
+    def on_finish():
+        video.write_bytes(b"x" * 4096)
+
+    spawner.push(
+        FakeLineProc(
+            lines=[
+                "download: PROG|0.0%|NA|NA|DL=0|TOT=4096|EST=NA",
+                "download: PROG|100.0%|1.5MiB/s|00:00|DL=4096|TOT=4096|EST=NA",
+            ],
+            returncode=0,
+            on_finish=on_finish,
+        )
+    )
+    job = _wire(
+        mgr.enqueue(make_info(), requestor="ali", audio_mode="all"),
+        AlwaysRejectBot(),
+    )
+
+    await mgr.start()
+    try:
+        assert await mgr.wait_idle(timeout=5.0)
+    finally:
+        await mgr.stop(grace=0.2)
+
+    assert job.state == "done"
+    assert job.error == ""
+    assert video.exists()
+    assert archive.contains("YouTube:abc123")
+
+
 # --- cancel: kill process, remove partials, keep foreign files --------------
 
 
@@ -399,7 +594,7 @@ class HangingProc:
 
     async def lines(self):
         yield "[download] Starting download"
-        yield "download: PROG 10.0% 1.0MiB/s 01:00"
+        yield "download: PROG|10.0%|1.0MiB/s|01:00|DL=102400|TOT=1024000|EST=NA"
         await self._gate.wait()
         yield "[download] still going..."  # non-progress line -> break the loop
         await asyncio.sleep(30)
@@ -428,9 +623,9 @@ class SlowProc:
         self._finished = False
 
     async def lines(self):
-        yield "download: PROG 10.0% 1.0MiB/s 00:30"
+        yield "download: PROG|10.0%|1.0MiB/s|00:30|DL=102400|TOT=1024000|EST=NA"
         await asyncio.sleep(0.1)
-        yield "download: PROG 50.0% 1.0MiB/s 00:10"
+        yield "download: PROG|50.0%|1.0MiB/s|00:10|DL=512000|TOT=1024000|EST=NA"
         await asyncio.sleep(0.1)
 
     async def wait(self):

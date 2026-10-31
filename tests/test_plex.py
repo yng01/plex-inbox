@@ -105,10 +105,14 @@ def test_sidecar_roundtrip(tmp_path):
         audio_tracks=[{"language": "en", "codec": "opus"}],
         genres=["Doc"],
         tags=["a"],
+        user_id=123456789,
+        username="alice",
     )
     p = plex.write_sidecar(tmp_path / "v1.info.json", sc)
     data = json.loads(p.read_text(encoding="utf-8"))
     assert data["requestor"] == "alice"
+    assert data["user_id"] == 123456789
+    assert data["username"] == "alice"
     assert data["audio_tracks"] == [{"language": "en", "codec": "opus"}]
     assert data["size_bytes"] == 123
 
@@ -128,6 +132,47 @@ def test_pick_poster_url_prefers_avatar():
         raw = {}
 
     assert plex.pick_poster_url(K()) is None
+
+
+def test_pick_avatar_url_no_thumbnail_fallback():
+    class J:
+        raw = {"thumbnail": "https://i/thumb.jpg"}
+
+    assert plex.pick_avatar_url(J()) is None
+
+    class I:
+        raw = {"uploader_image": "https://i/av.png", "thumbnail": "https://i/t.jpg"}
+
+    assert plex.pick_avatar_url(I()) == "https://i/av.png"
+
+
+async def test_resolve_youtube_avatar_url_og_image():
+    html = (
+        b"<html><head>"
+        b'<meta property="og:image" content="https://yt3.example/av.jpg">'
+        b"</head></html>"
+    )
+    http = FakeHttp(get_status=200, get_content=html)
+    url = await plex.resolve_youtube_avatar_url(http, "UC123")
+    assert url == "https://yt3.example/av.jpg"
+    assert http.gets[0]["url"] == "https://www.youtube.com/channel/UC123"
+    assert http.gets[0]["headers"].get("Cookie") == "CONSENT=YES+1"
+
+
+async def test_resolve_youtube_avatar_url_no_id_skips_get():
+    http = FakeHttp()
+    assert await plex.resolve_youtube_avatar_url(http, None) is None
+    assert http.gets == []
+
+
+async def test_resolve_youtube_avatar_url_non200_is_none():
+    http = FakeHttp(get_status=404, get_content=b"<html></html>")
+    assert await plex.resolve_youtube_avatar_url(http, "UC123") is None
+
+
+async def test_resolve_youtube_avatar_url_no_match_is_none():
+    http = FakeHttp(get_status=200, get_content=b"<html><head></head></html>")
+    assert await plex.resolve_youtube_avatar_url(http, "UC123") is None
 
 
 async def test_download_image_ok(tmp_path):
