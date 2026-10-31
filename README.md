@@ -57,6 +57,38 @@ ports to open, nothing to expose.
 > First run on an empty `.env`? Set `DEBUG_ACCESS=1`, message the bot, and it will
 > reply with your numeric Telegram ID to add to `ALLOWED_USER_IDS`.
 
+## Docker image (GHCR)
+
+The repository also publishes the image to GitHub Container Registry (see
+[Repository & CI](#repository--ci)). To run the prebuilt image instead of building
+locally:
+
+```bash
+docker pull ghcr.io/<owner>/yt-dlp-telegram-bot:latest
+docker run -d --name yt-dlp-bot --restart unless-stopped \
+  -v "$PWD/data:/data" \
+  --env-file .env \
+  ghcr.io/<owner>/yt-dlp-telegram-bot:latest
+```
+
+or in compose:
+
+```yaml
+services:
+  bot:
+    image: ghcr.io/<owner>/yt-dlp-telegram-bot:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+```
+
+The image is as private as the repository: pulling requires a GitHub token with
+`read:packages` scope (log in with `docker login ghcr.io` using your username and a
+PAT, or set the registry credentials in `~/.docker/config.json`).
+
 ## Using the bot
 
 - **➕ Add a video** — tap it (or send `/add <url>`, or just paste a link). The bot
@@ -169,3 +201,26 @@ Modules:
 | `bot/updater.py` | yt-dlp version check + in-place upgrade |
 | `bot/handlers.py` | Telegram UI: menu, add/confirm, queue, library, stats, language |
 | `bot/main.py` | wiring, startup/shutdown lifecycle |
+
+## Repository & CI
+
+`.github/workflows/docker.yml` runs on every push, PR, tag, or manual dispatch:
+
+1. **Test** — the full pytest suite in the same Docker image (no secrets needed).
+2. **Build & push** (skipped for PRs) — multi-arch build (`linux/amd64`,
+   `linux/arm64`) pushed to GHCR:
+   - `ghcr.io/<owner>/yt-dlp-telegram-bot:<sha>` — every push
+   - `ghcr.io/<owner>/yt-dlp-telegram-bot:latest` — pushes to the default branch
+   - `ghcr.io/<owner>/yt-dlp-telegram-bot:<tag>` — version tags like `v1.0.0`
+
+It uses the built-in `GITHUB_TOKEN` with `packages: write` (default for repo
+workflows) — nothing to configure. First push creates the package at
+**_Packages_** in the repository; check the workflow badge/runs page for status.
+
+To publish the repository:
+
+```bash
+# create the repo on github.com (public or private), then:
+git remote add origin git@github.com:<owner>/yt-dlp-telegram-bot.git
+git push -u origin master
+```
