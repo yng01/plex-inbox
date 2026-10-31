@@ -1,0 +1,31 @@
+# Usage:
+#   cp .env.example .env        # fill in BOT_TOKEN (and ALLOWED_USER_IDS)
+#   docker compose up -d --build          # run the bot
+#   docker compose run --rm --build test # run the test suite (no Telegram token needed)
+
+services:
+  bot:
+    build: .
+    image: yt-dlp-telegram-bot
+    container_name: yt-dlp-telegram-bot
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    # No `ports:` section on purpose — the bot only makes outbound connections
+    # (long polling + YouTube + PyPI + optional Plex refresh).
+
+  test:
+    build: .
+    image: yt-dlp-telegram-bot
+    working_dir: /work
+    command: >
+      sh -c "pip install --no-cache-dir 'pytest>=8' 'pytest-asyncio>=0.24'
+      && python -m pytest -q -p no:cacheprovider"
+    volumes:
+      - .:/work
+      - /work/.git
