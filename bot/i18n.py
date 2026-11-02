@@ -106,6 +106,20 @@ STRINGS: dict[str, dict[str, str]] = {
         "ar": "⚠️ هذه القائمة/القناة تحتوي على {n} عنصر. «تحميل الكل» سيضيف جميعها إلى قائمة الانتظار.",
     },
 
+    # --- Video file (uploaded to the bot) ---
+    "video_receiving": {
+        "en": "📥 Receiving your video…",
+        "ar": "📥 جاري استلام الفيديو…",
+    },
+    "video_error": {
+        "en": "😕 Couldn't receive that video file. Please try again.",
+        "ar": "😕 تعذّر استلام ملف الفيديو. حاول مرة أخرى.",
+    },
+    "video_default_title": {
+        "en": "Uploaded Video",
+        "ar": "فيديو مرفوع",
+    },
+
     # --- Download lifecycle ---
     "queued": {
         "en": "⏳ In queue (position {pos})…",

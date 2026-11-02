@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -30,7 +34,7 @@ from .i18n import LanguageStore, t, user_display
 from .probe import Entry, ProbeError, UrlInfo
 from .store import Archive, Library, Stats
 from .updater import Updater
-from .ytdlp import DownloadManager, Job
+from .ytdlp import VIDEO_EXTS, DownloadManager, Job
 
 URL_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.I)
 
@@ -287,14 +291,26 @@ async def _add_job(
     req: str,
     lang: str,
     audio_mode: str,
+    source_path: Path | None = None,
+    status_msg: object | None = None,
 ) -> Job | None:
-    """Enqueue one job and create its single status message. None if already archived."""
+    """Enqueue one job and create its single status message. None if already archived.
+
+    ``source_path`` marks the job as a local-file archive (a video sent to the bot)
+    instead of a URL download. ``status_msg``, when given, is an already-sent
+    message (e.g. the "receiving…" reply) that becomes the job's status message so
+    the user sees one continuous message rather than two.
+    """
     s = svc(context)
     key = f"{info.site}:{info.id}"
     if s.archive.contains(key):
         return None
     job = s.manager.enqueue(
-        info, requestor=req, audio_mode=audio_mode, url=info.url
+        info,
+        requestor=req,
+        audio_mode=audio_mode,
+        url=info.url,
+        source_path=source_path,
     )
     job.lang = lang
     job.bot = context.bot
@@ -303,8 +319,12 @@ async def _add_job(
     job.username = update.effective_user.username
     # the one status message the manager will edit through the lifecycle
     text = t(lang, "queued", pos=job.position)
-    msg = await update.effective_message.reply_text(text)
-    job.msg_id = msg.message_id
+    if status_msg is not None:
+        job.msg_id = status_msg.message_id
+        await status_msg.edit_text(text)
+    else:
+        msg = await update.effective_message.reply_text(text)
+        job.msg_id = msg.message_id
     return job
 
 
@@ -358,6 +378,157 @@ async def _reply(update, context, key: str, **kw) -> None:
         await update.callback_query.edit_message_text(L(context, update, key, **kw))
     elif update.effective_message:
         await update.effective_message.reply_text(L(context, update, key, **kw))
+
+
+# --- video files (sent to the bot) ------------------------------------------
+
+# mime-type -> extension for uploaded media (a subset Telegram actually serves)
+_MIME_EXT = {
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/x-msvideo": "avi",
+    "video/x-flv": "flv",
+    "video/ogg": "ogv",
+    "video/mpeg": "ts",
+}
+
+
+def _ext_for(video) -> str:
+    """Best extension for the uploaded file (original name, else mime, else mp4)."""
+    name = getattr(video, "file_name", None) or ""
+    if name:
+        suffix = Path(name).suffix.lower().lstrip(".")
+        if suffix in VIDEO_EXTS:
+            return suffix
+    mime = (getattr(video, "mime_type", None) or "").split(";")[0].strip().lower()
+    ext = _MIME_EXT.get(mime)
+    if ext and ext in VIDEO_EXTS:
+        return ext
+    return "mp4"
+
+
+async def _download_video_file(context, video) -> Path | None:
+    """Fetch the uploaded media to a fresh temp file. ``None`` on any failure.
+
+    Uses ``video.get_file()`` -> ``File.download_to_drive(custom_path=...)``. When a
+    local Bot API Server is configured this is a plain local copy (no network);
+    otherwise PTB streams the bytes from the Bot API.
+    """
+    try:
+        tgfile = await video.get_file()
+    except Exception as exc:
+        log.warning("video get_file failed: %s", exc)
+        return None
+    tmpdir = Path(tempfile.mkdtemp(prefix="ytbot-up-"))
+    dest = tmpdir / f"upload.{_ext_for(video)}"
+    try:
+        result = await tgfile.download_to_drive(custom_path=dest)
+    except Exception as exc:
+        log.warning("video download failed: %s", exc)
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return None
+    out = Path(result) if result else dest
+    if not out.is_file():
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return None
+    return out
+
+
+def _video_info(video, req: str, lang: str) -> UrlInfo:
+    """Metadata for an uploaded file (there is no remote probe to run).
+
+    The sender is the "channel" (who provided the content); the file's
+    ``file_unique_id`` is a stable id that makes re-sending the same file a no-op.
+    """
+    name = getattr(video, "file_name", None) or ""
+    stem = Path(name).stem if name else ""
+    title = stem or t(lang, "video_default_title")
+    file_id = getattr(video, "file_id", "") or ""
+    uid = getattr(video, "file_unique_id", None) or file_id or "local"
+    width = getattr(video, "width", None)
+    height = getattr(video, "height", None)
+    return UrlInfo(
+        id=str(uid),
+        title=title,
+        site="Upload",
+        url=f"telegram://file/{file_id}" if file_id else "telegram://upload",
+        channel=req,
+        duration=getattr(video, "duration", None),
+        resolution=f"{width}x{height}" if (width and height) else None,
+        year=datetime.now(timezone.utc).year,
+        audio_tracks=[],
+        is_playlist=False,
+        raw={
+            "file_id": file_id,
+            "file_unique_id": str(uid),
+            "mime_type": getattr(video, "mime_type", None),
+            "file_size": getattr(video, "file_size", None),
+        },
+    )
+
+
+def _rm_tree(path: Path | None) -> None:
+    """Best-effort removal of a temp file and its (now empty) parent dir."""
+    if not path:
+        return
+    p = Path(path)
+    try:
+        if p.is_dir():
+            shutil.rmtree(p, ignore_errors=True)
+        elif p.is_file():
+            p.unlink()
+            parent = p.parent
+            if parent.exists() and not any(parent.iterdir()):
+                parent.rmdir()
+    except OSError:
+        pass
+
+
+async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Archive a video (or video note) sent directly to the bot.
+
+    The media is pulled to a temp file, then routed through the *same* archive
+    flow as a link (queue, single status message, dedupe, sidecar, notification) —
+    the worker copies it into the library instead of invoking yt-dlp.
+    """
+    if not allowed(update, context):
+        return
+    msg = update.effective_message
+    if msg is None:
+        return
+    video = getattr(msg, "video", None) or getattr(msg, "video_note", None)
+    if video is None:
+        return
+    lang = lang_for(context, update)
+    req = _requestor(update)
+    # immediate feedback; this message becomes the job's single status message
+    status = await msg.reply_text(t(lang, "video_receiving"))
+    tmp = await _download_video_file(context, video)
+    if tmp is None:
+        await status.edit_text(t(lang, "video_error"))
+        return
+    info = _video_info(video, req, lang)
+    try:
+        job = await _add_job(
+            update,
+            context,
+            info,
+            req,
+            lang,
+            "all",
+            source_path=tmp,
+            status_msg=status,
+        )
+    except Exception as exc:
+        log.warning("on_video: enqueue failed: %s", exc, exc_info=exc)
+        _rm_tree(tmp)
+        await status.edit_text(t(lang, "video_error"))
+        return
+    if job is None:  # already archived
+        _rm_tree(tmp)
+        await status.edit_text(t(lang, "already_in_library"))
 
 
 # --- queue view -------------------------------------------------------------
@@ -679,4 +850,5 @@ def register(app, s: Services) -> None:
     app.add_handler(CommandHandler("stats", render_stats))
     app.add_handler(CommandHandler("lang", render_lang))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE, on_video))
     app.add_handler(CallbackQueryHandler(on_callback))

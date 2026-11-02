@@ -160,7 +160,7 @@ def test_enqueue_builds_target_path_and_job_fields(tmp_path):
 
     assert job.state == "queued"
     assert job.position == 1
-    assert job.base == "Great Video (2024)"
+    assert job.base == "abc123"  # on-disk name is the item id, not the title
     assert job.target_dir == cfg.data_dir / "YouTube" / "Cool Channel"
     assert job.target_dir.is_dir()
     assert job.dedupe_key == "YouTube:abc123"
@@ -178,16 +178,16 @@ def test_enqueue_sanitizes_site_channel_and_falls_back(tmp_path):
     )
     job = mgr.enqueue(info, requestor="user:123", audio_mode="best")
     assert job.target_dir == cfg.data_dir / "YouTube" / "Cool Channel What"
-    assert job.base == "Who A B (2024)"
+    assert job.base == "abc123"  # id-based, regardless of a messy title
 
 
 def test_enqueue_empty_channel_and_title_use_unknown_untitled(tmp_path):
     cfg = make_config(tmp_path)
     mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
-    info = make_info(site="", channel="", title="   ", id="x1", year=None)
+    info = make_info(site="", channel="", title="   ", id="", year=None)
     job = mgr.enqueue(info, requestor="ali", audio_mode="best")
     assert job.target_dir == cfg.data_dir / "unknown" / "unknown"
-    assert job.base == "untitled"
+    assert job.base == "untitled"  # empty id -> guaranteed non-empty stem
 
 
 def test_cmd_all_audio_mode_and_output(tmp_path):
@@ -203,7 +203,7 @@ def test_cmd_all_audio_mode_and_output(tmp_path):
     assert "--progress-template" in cmd
     assert "PROG" in cmd[cmd.index("--progress-template") + 1]
     out = cmd[cmd.index("--output") + 1]
-    assert out == str(job.target_dir / "Great Video (2024).%(ext)s")
+    assert out == str(job.target_dir / "abc123.%(ext)s")
     assert "-f" in cmd
     assert cmd[cmd.index("-f") + 1] == "bv*+mergeall[vcodec=none]"
     assert "--audio-multistreams" in cmd
@@ -244,7 +244,7 @@ def test_write_journal_records_base_and_is_removed_by_cleanup(tmp_path):
     j = write_journal(job)
     assert j.exists()
     meta = json.loads(j.read_text(encoding="utf-8"))
-    assert meta["base"] == "Great Video (2024)"
+    assert meta["base"] == "abc123"
     assert meta["info_id"] == "abc123"
     assert j.name.startswith(".inflight-")
 
@@ -274,7 +274,7 @@ async def test_success_path_writes_full_metadata(tmp_path):
 
     base_dir = cfg.data_dir / "YouTube" / "Cool Channel"
     base_dir.mkdir(parents=True, exist_ok=True)
-    video = base_dir / "Great Video (2024).mkv"
+    video = base_dir / "abc123.mkv"
 
     def on_finish():
         video.write_bytes(b"x" * 4096)
@@ -282,7 +282,7 @@ async def test_success_path_writes_full_metadata(tmp_path):
     spawner.push(
         FakeLineProc(
             lines=[
-                "[download] Destination: Great Video (2024).mkv",
+                "[download] Destination: abc123.mkv",
                 "download: PROG|25.0%|1.2MiB/s|00:10|DL=1048576|TOT=4194304|EST=NA",
                 "download: PROG|100.0%|1.5MiB/s|00:00|DL=4194304|TOT=4194304|EST=NA",
             ],
@@ -309,9 +309,9 @@ async def test_success_path_writes_full_metadata(tmp_path):
 
     d = base_dir
     assert video.exists()
-    assert (d / "Great Video (2024).jpg").exists()          # thumbnail, stem matches
-    assert (d / "poster.jpg").exists()                      # channel poster
-    nfo = (d / "Great Video (2024).nfo").read_text(encoding="utf-8")
+    assert (d / "abc123.jpg").exists()          # thumbnail, stem matches the id
+    assert (d / "poster.jpg").exists()          # channel poster
+    nfo = (d / "abc123.nfo").read_text(encoding="utf-8")
     assert "<title>Great Video</title>" in nfo
     assert "<year>2024</year>" in nfo
     assert "<genre>Documentary</genre>" in nfo
@@ -358,7 +358,7 @@ async def test_best_mode_embeds_single_track_and_omits_audio_tags(tmp_path):
     spawner.push(
         FakeLineProc(
             lines=["download: PROG|100.0%|1.0MiB/s|00:00|DL=100|TOT=100|EST=NA"],
-            on_finish=lambda: (d / "Great Video (2024).mp4").write_bytes(b"y" * 100),
+            on_finish=lambda: (d / "abc123.mp4").write_bytes(b"y" * 100),
         )
     )
     job = mgr.enqueue(
@@ -374,7 +374,7 @@ async def test_best_mode_embeds_single_track_and_omits_audio_tags(tmp_path):
 
     assert job.state == "done"
     assert job.audio_count == 1
-    nfo = (d / "Great Video (2024).nfo").read_text(encoding="utf-8")
+    nfo = (d / "abc123.nfo").read_text(encoding="utf-8")
     assert "<tag>audio:" not in nfo  # lone default track -> no audio tags
     sc = json.loads((d / "abc123.info.json").read_text(encoding="utf-8"))
     assert len(sc["audio_tracks"]) == 1
@@ -399,7 +399,7 @@ async def test_poster_prefers_youtube_channel_avatar_over_thumbnail(tmp_path):
     spawner.push(
         FakeLineProc(
             lines=["download: PROG|100.0%|1.0MiB/s|00:00|DL=100|TOT=100|EST=NA"],
-            on_finish=lambda: (d / "Great Video (2024).mp4").write_bytes(b"y" * 100),
+            on_finish=lambda: (d / "abc123.mp4").write_bytes(b"y" * 100),
         )
     )
     info = make_info(raw={}, channel_id="UC123", thumbnail=None)
@@ -427,8 +427,8 @@ async def test_failed_job_reports_reason_and_removes_partials(tmp_path):
 
     def on_finish():
         # yt-dlp wrote a partial file before dying
-        (d / "Great Video (2024).mkv").write_bytes(b"partial")
-        (d / "Great Video (2024).jpg").write_bytes(b"thumb")
+        (d / "abc123.mkv").write_bytes(b"partial")
+        (d / "abc123.jpg").write_bytes(b"thumb")
 
     spawner.push(
         FakeLineProc(
@@ -449,8 +449,8 @@ async def test_failed_job_reports_reason_and_removes_partials(tmp_path):
 
     assert job.state == "failed"
     assert "satisfies the requirement" in job.error
-    assert not (d / "Great Video (2024).mkv").exists()
-    assert not (d / "Great Video (2024).jpg").exists()
+    assert not (d / "abc123.mkv").exists()
+    assert not (d / "abc123.jpg").exists()
     assert not list(d.glob(".inflight-*.json"))
     assert not archive.contains("YouTube:abc123")
     assert bot.edits[-1][2].startswith("⚠️ Failed:")
@@ -498,7 +498,7 @@ async def test_repeated_identical_progress_is_not_re_edited(tmp_path):
 
     d = cfg.data_dir / "YouTube" / "Cool Channel"
     d.mkdir(parents=True, exist_ok=True)
-    video = d / "Great Video (2024).mkv"
+    video = d / "abc123.mkv"
 
     def on_finish():
         video.write_bytes(b"x" * 4096)
@@ -548,7 +548,7 @@ async def test_telegram_edit_rejection_never_fails_the_job(tmp_path):
 
     d = cfg.data_dir / "YouTube" / "Cool Channel"
     d.mkdir(parents=True, exist_ok=True)
-    video = d / "Great Video (2024).mkv"
+    video = d / "abc123.mkv"
 
     def on_finish():
         video.write_bytes(b"x" * 4096)
@@ -656,8 +656,8 @@ async def test_cancel_kills_process_and_removes_partials_keeps_foreign(tmp_path)
 
     proc = HangingProc(
         [
-            d / "Great Video (2024).mkv",
-            d / "Great Video (2024).jpg",
+            d / "abc123.mkv",
+            d / "abc123.jpg",
         ]
     )
     spawner.push(proc)
@@ -676,8 +676,8 @@ async def test_cancel_kills_process_and_removes_partials_keeps_foreign(tmp_path)
     assert job.state == "cancelled"
     assert proc.killed
     assert foreign.exists()  # foreign file untouched
-    assert not (d / "Great Video (2024).mkv").exists()
-    assert not (d / "Great Video (2024).jpg").exists()
+    assert not (d / "abc123.mkv").exists()
+    assert not (d / "abc123.jpg").exists()
     assert not list(d.glob(".inflight-*.json"))
     assert bot.edits[-1][2].startswith("🚫 Cancelled")
 
@@ -688,7 +688,7 @@ async def test_cancel_of_finished_job_is_rejected(tmp_path):
     d = cfg.data_dir / "YouTube" / "Cool Channel"
     d.mkdir(parents=True, exist_ok=True)
     spawner.push(
-        FakeLineProc(on_finish=lambda: (d / "Great Video (2024).mkv").write_bytes(b"z"))
+        FakeLineProc(on_finish=lambda: (d / "abc123.mkv").write_bytes(b"z"))
     )
     mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=spawner, http=FakeHttp())
     job = mgr.enqueue(make_info(), requestor="ali", audio_mode="all")
@@ -748,11 +748,11 @@ async def test_concurrency_cap_queues_excess(tmp_path):
     d.mkdir(parents=True, exist_ok=True)
     spawner.push(
         SlowProc(
-            on_finish=lambda: (d / "Great Video (2024).mkv").write_bytes(b"1")
+            on_finish=lambda: (d / "b1.mkv").write_bytes(b"1")
         )
     )
     spawner.push(
-        FakeLineProc(on_finish=lambda: (d / "Second (2024).mkv").write_bytes(b"2"))
+        FakeLineProc(on_finish=lambda: (d / "b2.mkv").write_bytes(b"2"))
     )
     job1 = mgr.enqueue(make_info(id="b1"), requestor="ali", audio_mode="all")
     job2 = mgr.enqueue(
@@ -785,7 +785,7 @@ async def test_stop_cancels_queued_and_cleans_downloading(tmp_path):
 
     d = cfg.data_dir / "YouTube" / "Cool Channel"
     d.mkdir(parents=True, exist_ok=True)
-    hanging = HangingProc([d / "Great Video (2024).mkv"])
+    hanging = HangingProc([d / "abc123.mkv"])
     spawner.push(hanging)
     job1 = mgr.enqueue(make_info(), requestor="ali", audio_mode="all")
     job2 = mgr.enqueue(
@@ -805,7 +805,7 @@ async def test_stop_cancels_queued_and_cleans_downloading(tmp_path):
     assert job1.state == "cancelled"
     assert job2.state == "cancelled"  # never started
     assert hanging.killed
-    assert not (d / "Great Video (2024).mkv").exists()
+    assert not (d / "abc123.mkv").exists()
     assert not list(d.glob(".inflight-*.json"))
     texts = [e[2] for e in bot.edits]
     assert any(x.startswith("🚫 Cancelled") for x in texts)
@@ -818,14 +818,14 @@ async def test_stop_cancels_queued_and_cleans_downloading(tmp_path):
 def test_cleanup_leftovers_removes_run_files_and_journal(tmp_path):
     d = tmp_path / "site" / "channel"
     d.mkdir(parents=True)
-    mkv = d / "Great Video (2024).mkv"
-    jpg = d / "Great Video (2024).jpg"
-    nfo = d / "Great Video (2024).nfo"
+    mkv = d / "abc123.mkv"
+    jpg = d / "abc123.jpg"
+    nfo = d / "abc123.nfo"
     foreign = d / "Finished Video (2020).mkv"
     for p in (mkv, jpg, nfo, foreign):
         p.write_bytes(b"x")
     (d / ".inflight-abc.json").write_text(
-        json.dumps({"base": "Great Video (2024)"}), encoding="utf-8"
+        json.dumps({"base": "abc123"}), encoding="utf-8"
     )
 
     removed = cleanup_leftovers(tmp_path)
@@ -853,10 +853,10 @@ def test_cleanup_leftovers_missing_dir_is_noop(tmp_path):
 def test_cleanup_leftovers_finds_nested_journals(tmp_path):
     d = tmp_path / "YouTube" / "Cool Channel"
     d.mkdir(parents=True)
-    (d / "Ep One (2024).mkv").write_bytes(b"x")
-    (d / "Ep One (2024).nfo").write_text("<video/>", encoding="utf-8")
+    (d / "ep1.mkv").write_bytes(b"x")
+    (d / "ep1.nfo").write_text("<video/>", encoding="utf-8")
     (d / ".inflight-1.json").write_text(
-        json.dumps({"base": "Ep One (2024)"}), encoding="utf-8"
+        json.dumps({"base": "ep1"}), encoding="utf-8"
     )
     assert cleanup_leftovers(tmp_path) == 3
 

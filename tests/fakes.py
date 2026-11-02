@@ -140,18 +140,82 @@ class FakeUser:
 
 
 class FakeMessage:
-    def __init__(self, text=None, id=1):
+    def __init__(self, text=None, id=1, video=None, video_note=None):
         self.text = text
         self.message_id = id
+        self.video = video
+        self.video_note = video_note
         self.replies: list[str] = []
         self.edits: list[str] = []
+        self.last_reply: "FakeMessage | None" = None
 
     async def reply_text(self, text, **kw):
         self.replies.append(text)
-        return FakeMessage(id=self.message_id + 1)
+        reply = FakeMessage(id=self.message_id + 1)
+        self.last_reply = reply
+        return reply
 
     async def edit_text(self, text, **kw):
         self.edits.append(text)
+
+
+class FakeVideo:
+    """Stand-in for ``telegram.Video`` / ``telegram.VideoNote``.
+
+    ``get_file()`` returns the supplied :class:`telegram.File`, so the handler's
+    ``download_to_drive(custom_path=...)`` path runs against a local file (no net).
+    """
+
+    def __init__(
+        self,
+        tg_file,
+        file_name="clip.mp4",
+        duration=10.0,
+        width=320,
+        height=180,
+        file_size=1234,
+        file_id="AgADfakefileid",
+        file_unique_id="uniq-123",
+        mime_type="video/mp4",
+    ):
+        self._tg_file = tg_file
+        self.file_name = file_name
+        self.duration = duration
+        self.width = width
+        self.height = height
+        self.file_size = file_size
+        self.file_id = file_id
+        self.file_unique_id = file_unique_id
+        self.mime_type = mime_type
+
+    async def get_file(self, **kw):
+        return self._tg_file
+
+
+class FakeVideoNote(FakeVideo):
+    """Stand-in for ``telegram.VideoNote`` (no file_name/mime_type/width/height)."""
+
+    def __init__(
+        self,
+        tg_file,
+        duration=10.0,
+        length=10,
+        file_size=1234,
+        file_id="AgADfakevn",
+        file_unique_id="uniq-vn",
+    ):
+        super().__init__(
+            tg_file,
+            file_name=None,
+            duration=duration,
+            width=None,
+            height=None,
+            file_size=file_size,
+            file_id=file_id,
+            file_unique_id=file_unique_id,
+            mime_type=None,
+        )
+        self.length = length
 
 
 class FakeBot:

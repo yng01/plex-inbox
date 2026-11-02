@@ -2,11 +2,15 @@
 
 Layout produced for each video (under ``<DATA_DIR>/<site>/<channel>/``)::
 
-    <Title> (Year).mkv      the merged video (mkv carries multiple audio streams)
-    <Title>.jpg             thumbnail, stem matches the video (Plex hover/grid art)
+    <id>.mkv                the merged video (mkv carries multiple audio streams)
+    <id>.jpg                thumbnail, stem matches the video (Plex hover/grid art)
     <id>.info.json          sidecar: requestor, timestamp, path, size, audio tracks
-    <Title>.nfo             Kodi/Plex NFO with <title>/<summary>/<year>/<genre>/<tags>
+    <id>.nfo                Kodi/Plex NFO with <title>/<summary>/<year>/<genre>/<tags>
     poster.jpg              channel artwork (once per channel folder)
+
+``<id>`` is the item's own id from the probe (e.g. the YouTube video id; for an
+uploaded video file, its Telegram ``file_unique_id``). The human-readable title
+lives in the NFO and sidecar, so Plex still shows the proper title.
 
 Tags are the collection hook: lowercase, single-line, ``key:value`` so they are trivial
 to filter in Plex (``tag contains requested:ali123``). Because they are written to disk,
@@ -42,14 +46,6 @@ def sanitize_filename(name: str, maxlen: int = 150) -> str:
     if len(s) > maxlen:
         s = s[:maxlen].rstrip(" .")
     return s or "untitled"
-
-
-def make_basename(title: str, year: int | None) -> str:
-    """Final video stem: sanitized title, with `` (Year)`` appended when known."""
-    base = sanitize_filename(title)
-    if year and 1000 <= int(year) <= 2999:
-        base = f"{base} ({int(year)})"
-    return base
 
 
 def format_duration(seconds: float | int | None) -> str:

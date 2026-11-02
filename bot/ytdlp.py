@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -34,7 +35,7 @@ from telegram.error import BadRequest
 from . import plex
 from .config import Config
 from .i18n import t
-from .probe import UrlInfo
+from .probe import AudioTrack, UrlInfo
 from .store import Archive
 
 VIDEO_EXTS = {"mkv", "mp4", "webm", "mov", "m4v", "flv", "avi", "ogv", "ts"}
@@ -55,7 +56,7 @@ class Job:
     channel: str
     title: str
     requestor: str
-    base: str  # sanitized video stem (no extension)
+    base: str  # sanitized item id — the on-disk stem (no extension)
     target_dir: Path
     audio_mode: str  # "all" | "orig" | "best"
     state: str = "queued"  # queued | downloading | done | failed | cancelled
@@ -84,6 +85,10 @@ class Job:
     chat_id: int | None = None
     msg_id: int | None = None
     lang: str = "en"
+    # When set, this job archives an already-downloaded local file (a video the
+    # user sent to the bot) instead of fetching a URL with yt-dlp. The worker
+    # copies it into the target directory, then runs the same finalization.
+    source_path: Path | None = field(default=None, repr=False)
 
     @property
     def dedupe_key(self) -> str:
@@ -383,6 +388,35 @@ def human_size(n: float | int) -> str:
     return f"{n:.1f} TB"
 
 
+async def real_ffprobe_audio(ffprobe_bin: str, path: Path, timeout: float = 20.0) -> int:
+    """Count the audio streams in a local file via ``ffprobe``.
+
+    Best-effort: any failure (missing binary, unreadable file, timeout) yields ``0``
+    so a metadata probe can never fail an otherwise successful archive.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffprobe_bin,
+            "-v",
+            "error",
+            "-select_streams",
+            "a",
+            "-show_entries",
+            "stream=index",
+            "-of",
+            "csv=p=0",
+            str(path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except Exception:
+        return 0
+    if proc.returncode != 0:
+        return 0
+    return sum(1 for line in out.decode("utf-8", "replace").splitlines() if line.strip())
+
+
 # --- manager ---------------------------------------------------------------
 
 
@@ -403,6 +437,8 @@ class DownloadManager:
         ytdlp_bin: str = "yt-dlp",
         http=None,
         notify_interval: float = 2.0,
+        ffprobe_bin: str = "ffprobe",
+        ffprobe_audio: Callable[[Path], Awaitable[int]] | None = None,
     ):
         self.config = config
         self.archive = archive
@@ -410,6 +446,9 @@ class DownloadManager:
         self.ytdlp_bin = ytdlp_bin
         self.http = http
         self.notify_interval = max(0.0, notify_interval)
+        self.ffprobe_bin = ffprobe_bin
+        # Injectable audio-stream probe (``path -> int``). ``None`` -> real ffprobe.
+        self.ffprobe_audio = ffprobe_audio
         self.data_dir = Path(config.data_dir)
         self._queue: asyncio.Queue[Job] = asyncio.Queue()
         self._jobs: dict[str, Job] = {}
@@ -472,10 +511,13 @@ class DownloadManager:
         requestor: str,
         audio_mode: str,
         url: str | None = None,
+        source_path: Path | str | None = None,
     ) -> Job:
         site = plex.sanitize_filename(info.site or "unknown") or "unknown"
         channel = plex.sanitize_filename(info.channel or "unknown") or "unknown"
-        base = plex.make_basename(info.title, info.year)
+        # on-disk name is the item's own id (YouTube video id, Telegram
+        # file_unique_id, …); the title stays in the NFO/sidecar for Plex
+        base = plex.sanitize_filename(info.id or "")
         target_dir = self.data_dir / site / channel
         target_dir.mkdir(parents=True, exist_ok=True)
         job = Job(
@@ -489,6 +531,7 @@ class DownloadManager:
             target_dir=target_dir,
             audio_mode=audio_mode,
             info=info,
+            source_path=Path(source_path) if source_path else None,
         )
         job.position = self._queue.qsize() + 1
         self._jobs[job.id] = job
@@ -631,6 +674,11 @@ class DownloadManager:
         )
         proc = None
         try:
+            if job.source_path is not None:
+                # A video the user sent to the bot: it is already on disk, so we
+                # copy it into the library instead of fetching a URL.
+                await self._run_local(job, pre)
+                return
             proc = await self.spawner(self._cmd(job))
             job.proc = proc
             async for line in proc.lines():
@@ -691,6 +739,57 @@ class DownloadManager:
             await self._safe_notify(job, force=True)
         finally:
             _remove(jpath)
+
+    async def _audio_streams(self, path: Path) -> int:
+        """Best-effort audio-stream count for a local file (0 on any failure)."""
+        try:
+            if self.ffprobe_audio is not None:
+                return max(0, int(await self.ffprobe_audio(path)))
+            return await real_ffprobe_audio(self.ffprobe_bin, path)
+        except Exception:
+            return 0
+
+    async def _run_local(self, job: Job, pre: set[Path]) -> None:
+        """Archive an already-downloaded local file (a video sent to the bot).
+
+        Copies the file into the job's target directory under the final stem, then
+        runs the same finalization as a URL download (sidecar, NFO, dedupe and
+        notification are identical; the thumbnail/poster are skipped because a
+        local upload has no remote artwork). The source temp file is removed once
+        it has been safely copied, or on failure.
+
+        Because a local upload has no probe metadata, the audio-track count is
+        discovered from the copied file itself (best-effort) so the sidecar and the
+        completion message report an honest number instead of a blank ``0``.
+        """
+        src = Path(job.source_path)
+        if not src.is_file():
+            raise FileNotFoundError(f"local source missing: {src}")
+        ext = src.suffix.lower().lstrip(".")
+        if ext not in VIDEO_EXTS:
+            ext = "mp4"
+        dest = job.target_dir / f"{job.base}.{ext}"
+        shutil.copyfile(src, dest)
+        # best-effort: fill in the (otherwise empty) track list from the real file
+        if job.info is not None and not job.info.audio_tracks:
+            n = await self._audio_streams(dest)
+            if n:
+                job.info.audio_tracks = [
+                    AudioTrack(language="und", codec="und") for _ in range(n)
+                ]
+        job.pct = 100.0
+        await self._safe_notify(job, force=True)
+        try:
+            await self._finalize(job)
+        finally:
+            _remove(src)
+            # the source lived in a per-upload temp dir; drop it once empty
+            parent = src.parent
+            try:
+                if parent.exists() and not any(parent.iterdir()):
+                    parent.rmdir()
+            except OSError:
+                pass
 
     def _cleanup(self, job: Job, pre: set[Path]) -> None:
         """Remove the files this run added, scoped to this job's base name.

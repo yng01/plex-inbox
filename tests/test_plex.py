@@ -15,12 +15,6 @@ def test_sanitize_filename():
     assert plex.sanitize_filename("محا / اختبار") == "محا اختبار"
 
 
-def test_make_basename_with_year():
-    assert plex.make_basename("My Doc", 2024) == "My Doc (2024)"
-    assert plex.make_basename("My Doc", None) == "My Doc"
-    assert plex.make_basename("My Doc", 99) == "My Doc"
-
-
 def test_format_duration():
     assert plex.format_duration(0) == "0s"
     assert plex.format_duration(None) == "0s"

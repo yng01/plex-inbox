@@ -5,8 +5,8 @@ A **private, self-hosted Telegram bot** that turns any yt-dlp-supported video in
 has several audio tracks — **all of them embedded as switchable streams**.
 
 Everything runs in **one Docker container** using long polling — no inbound ports, no
-web UI, no auth layer. Send a link, tap **Download**, and the video lands in
-`<site>/<channel>/<Title> (Year).mkv` with its thumbnail, poster, and metadata,
+web UI, no auth layer. Send a link (or a video file), tap **Download**, and the video
+lands in `<site>/<channel>/<video-id>.mkv` with its thumbnail, poster, and metadata,
 attributed to the person who requested it.
 
 ## Features
@@ -14,13 +14,17 @@ attributed to the person who requested it.
 - **Add by URL** — `yt-dlp` probes the link first; a confirmation screen shows the
   title, site, channel, duration, resolution, and every audio track with its language
   before anything downloads. Playlists offer *download all* vs. picking entries.
+- **Or just send a video file** — the bot accepts video and video-note messages and
+  archives them through the same flow (queue, single progress message, dedupe, NFO).
+  They're named by their Telegram file id, so re-sending the same file is a no-op.
 - **Who requested it** — the requestor (username, or `user:<id>` when there is none)
   is recorded in the dedupe archive, the sidecar JSON, and the NFO
   (`requested:ali`) so Plex collections can filter by person.
 - **Multi-audio** — when `MULTI_AUDIO=1` and a video has several audio tracks, all of
   them are embedded as separate streams in MKV and exposed in Plex as selectable
   audio. Single-track videos are unaffected (best video+audio, MP4).
-- **Plex-ready on disk** — `<Title> (Year)` naming, per-video thumbnail with a matching
+- **Plex-ready on disk** — files are named after the item's own id (stable, never
+  collides), per-video thumbnail with a matching
   stem, channel poster, and a Kodi-style NFO carrying `<title>`, `<summary>`,
   `<year>`, `<genre>`, and lowercase single-line `<tags>`
   (`site:youtube`, `channel:cool channel`, `requested:ali`, `audio:en`, `audio:ar`,
@@ -112,14 +116,16 @@ data/
 └── YouTube/
     └── Cool Channel/
         ├── poster.jpg               # channel avatar (once per channel)
-        ├── Great Video (2024).mkv   # video, all audio streams embedded
-        ├── Great Video (2024).jpg   # thumbnail, stem matches the video
-        ├── Great Video (2024).nfo   # Kodi/Plex metadata + tags
-        └── abc123.info.json         # sidecar: requestor, date, path, size, audio tracks
+        ├── jPjbMA0wvrI.mkv          # video, all audio streams embedded
+        ├── jPjbMA0wvrI.jpg          # thumbnail, stem matches the video
+        ├── jPjbMA0wvrI.nfo          # Kodi/Plex metadata + tags (carries the title)
+        └── jPjbMA0wvrI.info.json    # sidecar: requestor, date, path, size, audio tracks
 ```
 
-File names come from the probe (sanitized, ` (Year)` appended when the probe provides
-one) — never from raw video IDs.
+File names use the item's own id from the probe (sanitized) — the human-readable
+title lives in the NFO and sidecar, so Plex still shows the proper title. For
+videos you send to the bot directly, the id is the Telegram file id, which makes
+re-sending the same file a no-op.
 
 ## Plex: collections via tags
 
