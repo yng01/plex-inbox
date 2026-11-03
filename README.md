@@ -77,8 +77,8 @@ one-time setup:
    ```env
    TELEGRAM_API_ID=<your api id>
    TELEGRAM_API_HASH=<your api hash>
-   TELEGRAM_BOT_API_BASE_URL=http://bot-api:8081
-   TELEGRAM_BOT_API_BASE_FILE_URL=http://bot-api:8081/file
+   TELEGRAM_BOT_API_BASE_URL=http://bot-api:8081/bot
+   TELEGRAM_BOT_API_BASE_FILE_URL=http://bot-api:8081/file/bot
    ```
 3. Start with the `local-api` profile:
    ```bash
