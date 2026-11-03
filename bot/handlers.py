@@ -38,6 +38,12 @@ from .ytdlp import VIDEO_EXTS, DownloadManager, Job
 
 URL_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.I)
 
+# How long to wait for the Bot API to hand us an uploaded file. With a local Bot
+# API Server, getFile blocks until the *whole* file is on disk, so a large video
+# (hundreds of MB) needs far more than PTB's 5 s default. 1 hour keeps genuinely
+# slow transfers alive while a dead one still eventually surfaces.
+FILE_FETCH_TIMEOUT = 3600.0
+
 
 @dataclass
 class Services:
@@ -421,12 +427,13 @@ async def _download_video_file(context, video) -> Path | None:
     """Fetch the uploaded media to a fresh temp file. ``None`` on any failure.
 
     Uses ``video.get_file()`` -> ``File.download_to_drive(custom_path=...)``. When a
-    local Bot API Server is configured this is a plain local copy (no network);
+    local Bot API Server is configured, ``get_file`` blocks until the file is on disk
+    (hence the long timeout) and ``download_to_drive`` is then a plain local copy;
     otherwise PTB streams the bytes from the Bot API (20 MB cap — surfaced as
     :class:`VideoTooBig` with a friendlier message).
     """
     try:
-        tgfile = await video.get_file()
+        tgfile = await video.get_file(read_timeout=FILE_FETCH_TIMEOUT)
     except Exception as exc:
         log.warning("video get_file failed: %s", exc)
         if _is_too_big(exc):
@@ -435,7 +442,9 @@ async def _download_video_file(context, video) -> Path | None:
     tmpdir = Path(tempfile.mkdtemp(prefix="ytbot-up-"))
     dest = tmpdir / f"upload.{_ext_for(video)}"
     try:
-        result = await tgfile.download_to_drive(custom_path=dest)
+        result = await tgfile.download_to_drive(
+            custom_path=dest, read_timeout=FILE_FETCH_TIMEOUT
+        )
     except Exception as exc:
         log.warning("video download failed: %s", exc)
         shutil.rmtree(tmpdir, ignore_errors=True)
