@@ -14,6 +14,7 @@ import tempfile
 from datetime import datetime, timezone
 
 from telegram import File as TelegramFile
+from telegram.error import BadRequest
 
 from bot import handlers
 from bot.config import load_config
@@ -256,6 +257,27 @@ async def test_on_video_download_failure_reports_error(tmp_path, monkeypatch):
     assert t("en", "video_error") in status.edits
     assert svc.manager.queue_length() == 0
     assert not svc.manager._jobs
+
+
+async def test_too_big_file_gets_specific_message(tmp_path, monkeypatch):
+    """'File is too big' (standard Bot API's 20 MB cap) → a specific, kind message,
+    not the generic error, and no job is queued."""
+    _capture_tmp_dirs(tmp_path, monkeypatch)
+    cfg, svc, spawner, ctx = make_env(tmp_path)
+
+    video = FakeVideo(
+        TelegramFile(file_id="AgADbig", file_unique_id="uniq-big", file_path="/x/big.mkv"),
+        get_file_error=BadRequest("File is too big"),
+    )
+    msg = FakeMessage(id=35, video=video)
+
+    await handlers.on_video(_update(msg), ctx)
+
+    status = msg.last_reply
+    assert t("en", "video_too_big") in status.edits
+    assert t("en", "video_error") not in status.edits
+    assert not svc.manager._jobs
+    assert spawner.commands == []
 
 
 async def test_on_video_video_note(tmp_path, monkeypatch):

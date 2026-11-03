@@ -177,8 +177,10 @@ class FakeVideo:
         file_id="AgADfakefileid",
         file_unique_id="uniq-123",
         mime_type="video/mp4",
+        get_file_error: Exception | None = None,
     ):
         self._tg_file = tg_file
+        self._get_file_error = get_file_error
         self.file_name = file_name
         self.duration = duration
         self.width = width
@@ -189,6 +191,8 @@ class FakeVideo:
         self.mime_type = mime_type
 
     async def get_file(self, **kw):
+        if self._get_file_error is not None:
+            raise self._get_file_error
         return self._tg_file
 
 

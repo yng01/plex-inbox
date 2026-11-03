@@ -1,10 +1,50 @@
-# Usage:
-#   cp .env.example .env        # fill in BOT_TOKEN (and ALLOWED_USER_IDS)
-#   docker compose up -d --build bot      # run the bot (name the service: `up -d` alone
-#                                         # would also start the one-shot `test` job)
-#   docker compose run --rm --build test # run the test suite (no Telegram token needed)
+# ── Default (direct Bot API) ────────────────────────────────────────────────
+#   cp .env.example .env         # set BOT_TOKEN and ALLOWED_USER_IDS
+#   docker compose up -d --build bot
+#   Bot talks straight to api.telegram.org. Uploading video files to the bot
+#   is limited to 20 MB (standard Bot API cap). Links to videos: no limit.
+#
+# ── Large video files (any size) ────────────────────────────────────────────
+#   1. Get a one-time API ID/Hash: https://my.telegram.org -> "API development
+#      tools" (needs your Telegram phone number; free).
+#   2. Add TELEGRAM_API_ID / TELEGRAM_API_HASH / the two BASE_URL lines to .env.
+#   3. docker compose --profile local-api up -d --build bot
+#   A local Bot API Server proxies all Bot API calls and stores received files
+#   on disk, so the 20 MB cap no longer applies.
+#
+# ── Tests (no Telegram token, no network) ───────────────────────────────────
+#   docker compose run --rm --build test
 
 services:
+  # Local Bot API Server (official implementation, --local mode). getFile
+  # returns a *local* file path, which lifts the 20 MB cap on files a bot can
+  # receive. The bot mounts the same volume at the same path, so its download
+  # is a plain file copy (no re-streaming). Opt-in via `--profile local-api`.
+  bot-api:
+    image: aiogram/telegram-bot-api:10.3
+    container_name: yt-dlp-telegram-bot-api
+    restart: unless-stopped
+    profiles: ["local-api"]
+    environment:
+      # Free pair from https://my.telegram.org -> "API development tools"
+      # (empty in default mode is fine — this service is then profile-excluded)
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_WORK_DIR: /srv/telegram-bot-api
+      TELEGRAM_TEMP_DIR: /tmp
+      TELEGRAM_LOCAL: "1"
+      TELEGRAM_HTTP_PORT: "8081"
+    volumes:
+      - bot-api-data:/srv/telegram-bot-api
+    healthcheck:
+      # nc -z = "is the port listening" (the server returns 404 on /, so an
+      # HTTP healthcheck would always fail)
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   bot:
     build: .
     image: yt-dlp-telegram-bot
@@ -15,9 +55,18 @@ services:
         required: false
     environment:
       DATA_DIR: /data
+      # In `--profile local-api` mode, .env also sets TELEGRAM_BOT_API_BASE_URL
+      # and TELEGRAM_BOT_API_BASE_FILE_URL, which the bot reads (PTB does not
+      # read these itself) to route all Bot API + file traffic through bot-api.
+      # Left unset in default mode -> straight to api.telegram.org.
+      # No depends_on on purpose (it conflicts with bot-api's profile in default
+      # mode); the bot waits for the endpoint itself before starting to poll.
     volumes:
       - ./data:/data
-    # No `ports:` section on purpose — the bot only makes outbound connections
+      # Read-only view of bot-api's received files, at the exact path it reports
+      # in getFile responses — downloads become local copies (no-op when empty).
+      - bot-api-data:/srv/telegram-bot-api:ro
+    # No `ports:` on purpose — the bot only makes outbound connections
     # (long polling + YouTube + PyPI + optional Plex refresh).
 
   test:
@@ -30,3 +79,6 @@ services:
     volumes:
       - .:/work
       - /work/.git
+
+volumes:
+  bot-api-data:

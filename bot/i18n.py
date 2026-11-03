@@ -115,6 +115,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "😕 Couldn't receive that video file. Please try again.",
         "ar": "😕 تعذّر استلام ملف الفيديو. حاول مرة أخرى.",
     },
+    "video_too_big": {
+        "en": "😕 This video is over 20 MB, which the standard Bot API can't receive. Please send me a link to the video instead.",
+        "ar": "😕 هذا الفيديو أكبر من 20 ميغابايت ولا يمكن استقباله عبر واجهة البوت القياسية. أرسل لي رابط الفيديو بدلاً من ذلك.",
+    },
     "video_default_title": {
         "en": "Uploaded Video",
         "ar": "فيديو مرفوع",

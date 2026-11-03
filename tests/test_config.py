@@ -15,6 +15,8 @@ def test_defaults():
     assert c.default_lang == "en"
     assert c.debug_access is False
     assert c.video_format is None
+    assert c.bot_api_base_url is None
+    assert c.bot_api_base_file_url is None
     assert c.open_access is True
     assert c.is_allowed(999)
 
@@ -64,6 +66,27 @@ def test_plex_pair_required():
     assert c.plex_enabled is True
     assert c.plex_url == "https://plex.example"
     assert load_config(BASE).plex_enabled is False
+
+
+def test_bot_api_base_urls():
+    c = load_config(
+        {
+            **BASE,
+            "TELEGRAM_BOT_API_BASE_URL": "http://bot-api:8081",
+            "TELEGRAM_BOT_API_BASE_FILE_URL": "http://bot-api:8081/file",
+        }
+    )
+    assert c.bot_api_base_url == "http://bot-api:8081"
+    assert c.bot_api_base_file_url == "http://bot-api:8081/file"
+    # empty strings are treated as unset (default mode)
+    assert (
+        load_config(
+            {**BASE, "TELEGRAM_BOT_API_BASE_URL": "", "TELEGRAM_BOT_API_BASE_FILE_URL": ""}
+        ).bot_api_base_url
+        is None
+    )
+    with pytest.raises(ConfigError):
+        load_config({**BASE, "TELEGRAM_BOT_API_BASE_URL": "bot-api:8081"})
 
 
 def test_values(tmp_path):

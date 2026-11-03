@@ -409,17 +409,28 @@ def _ext_for(video) -> str:
     return "mp4"
 
 
+class VideoTooBig(Exception):
+    """Telegram rejected the file — the standard Bot API caps bot downloads at 20 MB."""
+
+
+def _is_too_big(exc: BaseException) -> bool:
+    return "too big" in str(exc).lower()
+
+
 async def _download_video_file(context, video) -> Path | None:
     """Fetch the uploaded media to a fresh temp file. ``None`` on any failure.
 
     Uses ``video.get_file()`` -> ``File.download_to_drive(custom_path=...)``. When a
     local Bot API Server is configured this is a plain local copy (no network);
-    otherwise PTB streams the bytes from the Bot API.
+    otherwise PTB streams the bytes from the Bot API (20 MB cap — surfaced as
+    :class:`VideoTooBig` with a friendlier message).
     """
     try:
         tgfile = await video.get_file()
     except Exception as exc:
         log.warning("video get_file failed: %s", exc)
+        if _is_too_big(exc):
+            raise VideoTooBig() from exc
         return None
     tmpdir = Path(tempfile.mkdtemp(prefix="ytbot-up-"))
     dest = tmpdir / f"upload.{_ext_for(video)}"
@@ -428,6 +439,8 @@ async def _download_video_file(context, video) -> Path | None:
     except Exception as exc:
         log.warning("video download failed: %s", exc)
         shutil.rmtree(tmpdir, ignore_errors=True)
+        if _is_too_big(exc):
+            raise VideoTooBig() from exc
         return None
     out = Path(result) if result else dest
     if not out.is_file():
@@ -505,7 +518,11 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     req = _requestor(update)
     # immediate feedback; this message becomes the job's single status message
     status = await msg.reply_text(t(lang, "video_receiving"))
-    tmp = await _download_video_file(context, video)
+    try:
+        tmp = await _download_video_file(context, video)
+    except VideoTooBig:
+        await status.edit_text(t(lang, "video_too_big"))
+        return
     if tmp is None:
         await status.edit_text(t(lang, "video_error"))
         return

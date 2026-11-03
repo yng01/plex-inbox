@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from urllib.parse import urlparse
 
 import httpx
 from telegram.ext import Application, ApplicationBuilder
@@ -107,6 +108,41 @@ async def _startup(config: Config, svc: handlers.Services) -> None:
         log.warning("startup update check failed: %s", exc)
 
 
+async def _wait_for_bot_api(config: Config, timeout: float = 90.0) -> None:
+    """When traffic is routed through a local Bot API Server, wait until it
+    accepts connections before polling. PTB's one-shot ``get_me`` at startup has
+    no retry, so starting first would crash the bot; this is the ordering gate.
+    """
+    if not config.bot_api_base_url:
+        return
+    u = urlparse(config.bot_api_base_url)
+    host, port = u.hostname, u.port or (443 if u.scheme == "https" else 80)
+    if not host or not port:
+        return
+    log.info("waiting for Bot API server at %s:%s …", host, port)
+    deadline = asyncio.get_event_loop().time() + timeout
+    while True:
+        try:
+            # A successful TCP connect proves the server is listening; that is
+            # all we need (a bare connect leaves the peer to close its side, so
+            # we don't await wait_closed, which could hang on a quiet server).
+            _reader, writer = await asyncio.open_connection(host, port)
+        except OSError:
+            if asyncio.get_event_loop().time() >= deadline:
+                log.warning(
+                    "Bot API server %s:%s still unreachable after %ss — trying anyway",
+                    host,
+                    port,
+                    int(timeout),
+                )
+                return
+            await asyncio.sleep(0.5)
+            continue
+        writer.close()
+        log.info("Bot API server %s:%s is reachable", host, port)
+        return
+
+
 def run(config: Config | None = None) -> None:
     """Blocking entry point: wire everything and long-poll until SIGTERM/SIGINT."""
     config = config or load_config()
@@ -135,16 +171,26 @@ def run(config: Config | None = None) -> None:
             task.cancel()
         log.info("shutdown complete")
 
-    app = (
+    builder = (
         ApplicationBuilder()
         .token(config.bot_token)
         .post_init(on_post_init)
         .post_shutdown(on_post_shutdown)
-        .build()
     )
+    # Route Bot API traffic through a local Bot API Server when configured. In
+    # that mode getFile returns a *local* path, lifting the 20 MB cap on files
+    # a bot can receive. (PTB does not read these from the environment itself.)
+    if config.bot_api_base_url:
+        builder = builder.base_url(config.bot_api_base_url)
+    if config.bot_api_base_file_url:
+        builder = builder.base_file_url(config.bot_api_base_file_url)
+    app = builder.build()
     # handlers read services via context.bot_data["svc"]; wire it before the first update
     app.bot_data["svc"] = svc
     handlers.register(app, svc)
+    # If we're proxying through a local Bot API Server, make sure it's listening
+    # before the one-shot startup get_me (which has no retry) runs.
+    asyncio.run(_wait_for_bot_api(config))
     app.run_polling(drop_pending_updates=True)
 
 

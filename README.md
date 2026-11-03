@@ -17,6 +17,9 @@ attributed to the person who requested it.
 - **Or just send a video file** — the bot accepts video and video-note messages and
   archives them through the same flow (queue, single progress message, dedupe, NFO).
   They're named by their Telegram file id, so re-sending the same file is a no-op.
+  By default Telegram caps files a bot can receive at **20 MB**; enable the optional
+  local Bot API Server (one-time setup, [below](#receiving-video-files-larger-than-20-mb))
+  to lift that cap for files of any size.
 - **Who requested it** — the requestor (username, or `user:<id>` when there is none)
   is recorded in the dedupe archive, the sidecar JSON, and the NFO
   (`requested:ali`) so Plex collections can filter by person.
@@ -52,7 +55,7 @@ attributed to the person who requested it.
 
 ```bash
 cp .env.example .env          # set BOT_TOKEN (from @BotFather) and ALLOWED_USER_IDS
-docker compose up -d --build
+docker compose up -d --build bot   # name the service so the one-shot `test` job isn't run
 ```
 
 Point Plex at `./data` (the container's `/data`) as a videos library. That's it — no
@@ -60,6 +63,31 @@ ports to open, nothing to expose.
 
 > First run on an empty `.env`? Set `DEBUG_ACCESS=1`, message the bot, and it will
 > reply with your numeric Telegram ID to add to `ALLOWED_USER_IDS`.
+
+## Receiving video files larger than 20 MB
+
+By default the bot talks straight to `api.telegram.org`, which caps files a bot can
+**receive** at 20 MB (larger uploads reply with a “send a link instead” hint). To
+accept video files of *any size*, run the included local Bot API Server. This is a
+one-time setup:
+
+1. Get a free API ID/Hash: <https://my.telegram.org> → **API development tools**
+   (sign in with the same phone number as your bot's account; you'll confirm by SMS).
+2. In `.env`, fill in the four `TELEGRAM_*` lines for this (uncomment them):
+   ```env
+   TELEGRAM_API_ID=<your api id>
+   TELEGRAM_API_HASH=<your api hash>
+   TELEGRAM_BOT_API_BASE_URL=http://bot-api:8081
+   TELEGRAM_BOT_API_BASE_FILE_URL=http://bot-api:8081/file
+   ```
+3. Start with the `local-api` profile:
+   ```bash
+   docker compose --profile local-api up -d --build bot
+   ```
+
+The server stores received files on a Docker volume that the bot mounts read-only at
+the same path, so its “download” is a plain local file copy (no re-streaming, no size
+cap). Without step 3 the stack runs exactly as before (20 MB cap, direct to Telegram).
 
 ## Docker image (GHCR)
 

@@ -97,6 +97,10 @@ class Config:
     default_lang: str = "en"
     debug_access: bool = False
     video_format: str | None = None
+    # Optional: route all Bot API traffic (incl. file downloads) through a local
+    # Bot API Server — required to receive uploaded files larger than 20 MB.
+    bot_api_base_url: str | None = None
+    bot_api_base_file_url: str | None = None
 
     def is_allowed(self, user_id: int) -> bool:
         return self.open_access or user_id in self.allowed_user_ids
@@ -131,6 +135,16 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
 
     video_format = (e.get("VIDEO_FORMAT") or "").strip() or None
 
+    def _base_url(name: str) -> str | None:
+        raw = (e.get(name) or "").strip()
+        if not raw:
+            return None
+        if not raw.startswith(("http://", "https://")):
+            raise ConfigError(
+                f"{name} must start with http:// or https://, got {raw!r}"
+            )
+        return raw
+
     return Config(
         bot_token=token,
         open_access=open_access,
@@ -146,4 +160,6 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         default_lang=default_lang,
         debug_access=_flag(e.get("DEBUG_ACCESS"), "DEBUG_ACCESS", False),
         video_format=video_format,
+        bot_api_base_url=_base_url("TELEGRAM_BOT_API_BASE_URL"),
+        bot_api_base_file_url=_base_url("TELEGRAM_BOT_API_BASE_FILE_URL"),
     )
