@@ -177,7 +177,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     context.user_data["pending"] = {"info": info, "page": 0}
     try:
-        await _render_confirm(update, context, info)
+        # edit the "🔎 Fetching…" status message *in place* into the confirm
+        # screen (never send a second message and leave the status dangling)
+        await _render_confirm(update, context, info, status_msg=status)
     except Exception:
         await status.edit_text(L(context, update, "error_generic"))
 
@@ -204,7 +206,11 @@ def _detail_lines(context, update, info: UrlInfo) -> list[str]:
 
 
 async def _render_confirm(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, info: UrlInfo, page: int = 0
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    info: UrlInfo,
+    page: int = 0,
+    status_msg: object | None = None,
 ) -> None:
     s = svc(context)
     lang = lang_for(context, update)
@@ -263,6 +269,10 @@ async def _render_confirm(
     text = "\n".join(lines)
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=markup)
+    elif status_msg is not None:
+        # replace the "🔎 Fetching…" status message in place (a second message
+        # would leave the status one dangling and looking stuck)
+        await status_msg.edit_text(text, reply_markup=markup)
     else:
         await update.effective_message.reply_text(text, reply_markup=markup)
 

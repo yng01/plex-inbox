@@ -8,6 +8,8 @@ click after Cancel even crashed into a cleared ``pending``). Closing the
 screen = editing the message with an *empty* ``InlineKeyboardMarkup``.
 """
 
+import json
+
 from telegram import InlineKeyboardMarkup
 
 from bot import handlers
@@ -24,6 +26,7 @@ from fakes import (
     FakeContext,
     FakeHttp,
     FakeMessage,
+    FakeProbeSpawner,
     FakeUpdate,
     FakeUser,
     RecordingSpawner,
@@ -193,3 +196,62 @@ async def test_playlist_entry_download_adds_one_and_closes(tmp_path):
     assert len(jobs) == 1
     assert jobs[0].base == "ep1"
     _assert_closed(cq.message)
+
+
+# --- URL → confirm: the status message must be replaced, never left dangling ---
+
+PROBE_JSON = {
+    "id": "abc123",
+    "title": "Great Video",
+    "extractor_key": "YouTube",
+    "channel": "Cool Channel",
+    "webpage_url": "https://youtube.com/watch?v=abc123",
+    "duration": 372.5,
+    "resolution": "1920x1080",
+}
+
+
+def _url_update() -> tuple[FakeMessage, FakeUpdate]:
+    msg = FakeMessage(text="https://youtube.com/watch?v=abc123")
+    upd = FakeUpdate(user=FakeUser(id=111, username="ali"), message=msg)
+    return msg, upd
+
+
+async def test_url_confirm_replaces_probing_message(tmp_path):
+    """Regression (user-reported 'stuck on 🔎 Fetching video info…'): a
+    successful probe used to send the confirm screen as a *second* message and
+    leave the "Fetching…" status behind, so the first message looked stuck
+    forever. The status message must be edited into the confirm screen
+    instead — one message, no dangling status."""
+    cfg, svc, ctx = make_env(tmp_path)
+    svc.probe_spawner = FakeProbeSpawner(stdout=json.dumps(PROBE_JSON))
+    msg, upd = _url_update()
+
+    await handlers.on_text(upd, ctx)
+
+    status = msg.last_reply  # the '🔎 Fetching…' message
+    assert status is not None
+    assert status.edits, "status message was never edited into the confirm screen"
+    assert t("en", "detail_title") in status.edits[-1]
+    assert t("en", "detail_site") in status.edits[-1]
+    markup = status.edit_markups[-1]
+    assert isinstance(markup, InlineKeyboardMarkup)
+    datas = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert "da" in datas and "c" in datas
+    # no *second* confirm message below the status one
+    assert msg.replies == [t("en", "probing")]
+    assert ctx.user_data["pending"]["info"].id == "abc123"
+
+
+async def test_url_probe_error_edits_probing_message(tmp_path):
+    cfg, svc, ctx = make_env(tmp_path)
+    svc.probe_spawner = FakeProbeSpawner(
+        stdout="", stderr="ERROR: This video is private", returncode=1
+    )
+    msg, upd = _url_update()
+
+    await handlers.on_text(upd, ctx)
+
+    status = msg.last_reply
+    assert status.edits[-1] == t("en", "error_probe_private")
+    assert msg.replies == [t("en", "probing")]
