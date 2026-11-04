@@ -224,19 +224,23 @@ async def test_on_video_same_file_twice_is_noop(tmp_path, monkeypatch):
             video=FakeVideo(tg_file, file_name="My Clip.mkv", file_unique_id=file_unique_id),
         )
 
-    # first send: archived
+    # first send: archived (the file is streamed in once)
     msg1 = send("first.mkv", "uniq-777")
     await handlers.on_video(_update(msg1), ctx)
     await _run_to_completion(svc)
     assert svc.archive.contains("Upload:uniq-777")
+    assert msg1.video.get_file_calls == 1  # first send does the transfer
 
-    # second send of the same file: skipped, no second job, temp cleaned up
+    # second send of the same file: deduped *before* any download, so the whole
+    # transfer is skipped and the user gets an instant "already in library" reply
+    # (no "receiving…" status, no temp dir, no second job)
     msg2 = send("second.mkv", "uniq-777")
     await handlers.on_video(_update(msg2), ctx)
     assert len(svc.manager._jobs) == 1
-    status2 = msg2.last_reply
-    assert t("en", "already_in_library") in status2.edits
-    assert not list(base.iterdir()), "temp file for the skipped send must be removed"
+    assert msg2.video.get_file_calls == 0, "duplicate must not re-download"
+    assert t("en", "already_in_library") in msg2.replies
+    assert t("en", "video_receiving") not in msg2.replies, "no 'receiving' for a duplicate"
+    assert not list(base.iterdir()), "no temp dir for the skipped send"
     assert spawner.commands == []
 
 

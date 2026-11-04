@@ -525,6 +525,15 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     lang = lang_for(context, update)
     req = _requestor(update)
+    # Dedupe *before* the (potentially huge) download. The dedupe id is the file's
+    # file_unique_id, which comes from the message metadata (no transfer), so a
+    # re-sent duplicate is skipped with a single reply instead of re-streaming the
+    # whole file — mirroring the URL flow, which dedupes right after the cheap probe
+    # and before the expensive download.
+    info = _video_info(video, req, lang)
+    if svc(context).archive.contains(f"{info.site}:{info.id}"):
+        await msg.reply_text(t(lang, "already_in_library"))
+        return
     # immediate feedback; this message becomes the job's single status message
     status = await msg.reply_text(t(lang, "video_receiving"))
     try:
@@ -535,7 +544,6 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if tmp is None:
         await status.edit_text(t(lang, "video_error"))
         return
-    info = _video_info(video, req, lang)
     try:
         job = await _add_job(
             update,
@@ -552,7 +560,7 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         _rm_tree(tmp)
         await status.edit_text(t(lang, "video_error"))
         return
-    if job is None:  # already archived
+    if job is None:  # rare race: archived between our pre-check and the enqueue
         _rm_tree(tmp)
         await status.edit_text(t(lang, "already_in_library"))
 

@@ -181,6 +181,7 @@ class FakeVideo:
     ):
         self._tg_file = tg_file
         self._get_file_error = get_file_error
+        self.get_file_calls = 0
         self.file_name = file_name
         self.duration = duration
         self.width = width
@@ -191,6 +192,7 @@ class FakeVideo:
         self.mime_type = mime_type
 
     async def get_file(self, **kw):
+        self.get_file_calls += 1
         if self._get_file_error is not None:
             raise self._get_file_error
         return self._tg_file
