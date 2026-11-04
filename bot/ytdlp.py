@@ -192,16 +192,22 @@ def format_args(
 
     * all  -> best video + *all* audio-only formats, merged (mkv carries them all)
     * orig -> best video + the *original-language* audio track if the probe knows
-      the video's language (``bv*+ba[lang=xx]/ba/b``), else the single best audio
+      the video's language (``bv*+ba[language=xx]/bv*+ba/b``), else the single
+      best audio. Every fallback keeps a video stream, so this mode never
+      degrades to audio-only.
     * best -> best video + single best audio (alias of ``orig`` without a language)
     * a user VIDEO_FORMAT override wins over all of the above.
+
+    Note: yt-dlp's format filters key on the field name ``language`` (``lang``
+    is *not* a valid key and silently fails, dropping the selection to the
+    audio-only fallback).
     """
     if video_format:
         return ["-f", video_format]
     if audio_mode == "all":
         return ["-f", "bv*+mergeall[vcodec=none]", "--audio-multistreams"]
     if audio_mode == "orig" and language:
-        return ["-f", f"bv*+ba[lang={language}]/ba/b"]
+        return ["-f", f"bv*+ba[language={language}]/bv*+ba/b"]
     return ["-f", "bv*+ba/b"]
 
 

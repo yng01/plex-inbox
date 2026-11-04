@@ -91,7 +91,10 @@ def test_format_args_best_only():
 
 
 def test_format_args_orig_prefers_original_language():
-    assert format_args(None, "orig", "ar") == ["-f", "bv*+ba[lang=ar]/ba/b"]
+    assert format_args(None, "orig", "ar") == [
+        "-f",
+        "bv*+ba[language=ar]/bv*+ba/b",
+    ]
 
 
 def test_format_args_orig_without_language_falls_back_to_best():
@@ -224,7 +227,7 @@ def test_cmd_orig_mode_selects_original_language(tmp_path):
     mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
     job = mgr.enqueue(make_info(language="ar"), requestor="ali", audio_mode="orig")
     cmd = mgr._cmd(job)
-    assert cmd[cmd.index("-f") + 1] == "bv*+ba[lang=ar]/ba/b"
+    assert cmd[cmd.index("-f") + 1] == "bv*+ba[language=ar]/bv*+ba/b"
     assert "--audio-multistreams" not in cmd
 
 

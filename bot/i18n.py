@@ -75,8 +75,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "ar": "⬇️ تحميل (كل المسارات)",
     },
     "btn_original_audio": {
-        "en": "🎵 Original audio",
-        "ar": "🎵 الصوت الأصلي",
+        "en": "⬇️ Download (original audio)",
+        "ar": "⬇️ تحميل (الصوت الأصلي)",
     },
     "btn_cancel": {"en": "❌ Cancel", "ar": "❌ إلغاء"},
     "btn_download_all_n": {

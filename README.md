@@ -198,9 +198,12 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
 3. **Queue** — at most `MAX_CONCURRENT` jobs run at once; the rest wait in an
    ordered queue.
 4. **Download** — `yt-dlp` runs as a child process with a progress template; the bot
-   edits one status message with %/speed (throttled to ~2 s). Multi-audio uses
-   `bv*+mergeall[vcodec=none] --audio-multistreams` (MKV); single-track uses
-   `bv*+ba/b`.
+   edits one status message with %/speed (throttled to ~2 s). Format selection:
+   - **All audio** (`MULTI_AUDIO=1`): `bv*+mergeall[vcodec=none] --audio-multistreams` (MKV).
+   - **Original audio**: `bv*+ba[language=<lang>]/bv*+ba/b` — best video + the
+     original-language track (video is kept in every fallback, so it never degrades
+     to audio-only).
+   - **Single track**: `bv*+ba/b`.
 5. **Finalize** — thumbnail download, NFO + sidecar write, channel poster, archive
    ledger entry, optional Plex refresh, final ✅ message.
 6. **Failure / cancel** — the process is killed and exactly the files that appeared
