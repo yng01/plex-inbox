@@ -351,7 +351,9 @@ async def _enqueue(
         job = await _add_job(update, context, _target_info(context, entry_idx), req, lang, audio_mode)
         context.user_data["pending"] = None
         if job is None:
-            await _reply(update, context, "already_in_library")
+            await _close_confirm(update, context, "already_in_library")
+        else:
+            await _close_confirm(update, context)
         return
 
     if not base_info.is_playlist:
@@ -359,7 +361,9 @@ async def _enqueue(
         job = await _add_job(update, context, base_info, req, lang, audio_mode)
         context.user_data["pending"] = None
         if job is None:
-            await _reply(update, context, "already_in_library")
+            await _close_confirm(update, context, "already_in_library")
+        else:
+            await _close_confirm(update, context)
         return
 
     # playlist: fan out to one independently cancellable job per entry
@@ -372,11 +376,11 @@ async def _enqueue(
             added += 1
     context.user_data["pending"] = None
     if added and skipped:
-        await _reply(update, context, "added_many_skip", n=added, m=skipped)
+        await _close_confirm(update, context, "added_many_skip", n=added, m=skipped)
     elif added:
-        await _reply(update, context, "added_many", n=added)
+        await _close_confirm(update, context, "added_many", n=added)
     else:
-        await _reply(update, context, "already_in_library")
+        await _close_confirm(update, context, "already_in_library")
 
 
 async def _reply(update, context, key: str, **kw) -> None:
@@ -384,6 +388,22 @@ async def _reply(update, context, key: str, **kw) -> None:
         await update.callback_query.edit_message_text(L(context, update, key, **kw))
     elif update.effective_message:
         await update.effective_message.reply_text(L(context, update, key, **kw))
+
+
+async def _close_confirm(update, context, key: str | None = None, **kw) -> None:
+    """Close the confirm screen once a choice has been made.
+
+    ``edit_message_text`` with no ``reply_markup`` (PTB drops ``None`` from the
+    request) leaves the existing keyboard in place, so the stale audio/download/
+    cancel buttons would stay visible and clickable; an empty
+    ``InlineKeyboardMarkup`` removes it. Without ``key`` the current text (the
+    item details) is kept.
+    """
+    cq = update.callback_query
+    if not (cq and cq.message):
+        return
+    text = L(context, update, key, **kw) if key else (cq.message.text or "")
+    await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup([]))
 
 
 # --- video files (sent to the bot) ------------------------------------------
@@ -790,7 +810,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         if data == "c":
             context.user_data["pending"] = None
-            await _reply(update, context, "cancelled")
+            await _close_confirm(update, context, "cancelled")
             return
 
         # queue cancel

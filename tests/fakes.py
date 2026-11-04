@@ -147,6 +147,8 @@ class FakeMessage:
         self.video_note = video_note
         self.replies: list[str] = []
         self.edits: list[str] = []
+        # the ``reply_markup`` kwarg of each edit (``None`` = kept the old one)
+        self.edit_markups: list[object | None] = []
         self.last_reply: "FakeMessage | None" = None
 
     async def reply_text(self, text, **kw):
@@ -157,6 +159,7 @@ class FakeMessage:
 
     async def edit_text(self, text, **kw):
         self.edits.append(text)
+        self.edit_markups.append(kw.get("reply_markup"))
 
 
 class FakeVideo:
@@ -243,7 +246,7 @@ class FakeCallbackQuery:
         self.answered += 1
 
     async def edit_message_text(self, text, **kw):
-        self.message.edits.append(text)
+        await self.message.edit_text(text, **kw)
 
 
 class FakeUpdate:
