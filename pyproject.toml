@@ -1,5 +1,5 @@
 [project]
-name = "yt-dlp-telegram-bot"
+name = "plex-inbox"
 version = "0.1.0"
 description = "Private, self-hosted Telegram bot that archives any yt-dlp-supported video, ready for Plex"
 requires-python = ">=3.11"

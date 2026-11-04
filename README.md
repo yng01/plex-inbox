@@ -1,4 +1,4 @@
-# yt-dlp-telegram-bot
+# plex-inbox
 
 A **private, self-hosted Telegram bot** that turns any yt-dlp-supported video into a
 **Plex-ready archive**: proper file names, artwork, NFO metadata, and — when a video
@@ -96,11 +96,11 @@ The repository also publishes the image to GitHub Container Registry (see
 locally:
 
 ```bash
-docker pull ghcr.io/<owner>/yt-dlp-telegram-bot:latest
-docker run -d --name yt-dlp-bot --restart unless-stopped \
+docker pull ghcr.io/<owner>/plex-inbox:latest
+docker run -d --name plex-inbox --restart unless-stopped \
   -v "$PWD/data:/data" \
   --env-file .env \
-  ghcr.io/<owner>/yt-dlp-telegram-bot:latest
+  ghcr.io/<owner>/plex-inbox:latest
 ```
 
 or in compose:
@@ -108,7 +108,7 @@ or in compose:
 ```yaml
 services:
   bot:
-    image: ghcr.io/<owner>/yt-dlp-telegram-bot:latest
+    image: ghcr.io/<owner>/plex-inbox:latest
     restart: unless-stopped
     env_file: .env
     environment:
@@ -243,9 +243,9 @@ Modules:
 1. **Test** — the full pytest suite in the same Docker image (no secrets needed).
 2. **Build & push** (skipped for PRs) — multi-arch build (`linux/amd64`,
    `linux/arm64`) pushed to GHCR:
-   - `ghcr.io/<owner>/yt-dlp-telegram-bot:<sha>` — every push
-   - `ghcr.io/<owner>/yt-dlp-telegram-bot:latest` — pushes to the default branch
-   - `ghcr.io/<owner>/yt-dlp-telegram-bot:<tag>` — version tags like `v1.0.0`
+   - `ghcr.io/<owner>/plex-inbox:<sha>` — every push
+   - `ghcr.io/<owner>/plex-inbox:latest` — pushes to the default branch
+   - `ghcr.io/<owner>/plex-inbox:<tag>` — version tags like `v1.0.0`
 
 It uses the built-in `GITHUB_TOKEN` with `packages: write` (default for repo
 workflows) — nothing to configure. First push creates the package at
@@ -255,6 +255,6 @@ To publish the repository:
 
 ```bash
 # create the repo on github.com (public or private), then:
-git remote add origin git@github.com:<owner>/yt-dlp-telegram-bot.git
+git remote add origin git@github.com:<owner>/plex-inbox.git
 git push -u origin master
 ```

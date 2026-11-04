@@ -1,4 +1,4 @@
-# yt-dlp-telegram-bot
+# plex-inbox
 #
 # One self-contained image: Python 3.12 + ffmpeg + yt-dlp (pip) + python-telegram-bot.
 # The bot talks to Telegram via long polling (outbound only), so no ports are published.

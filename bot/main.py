@@ -30,7 +30,7 @@ from .store import Archive, Library, Stats
 from .updater import Updater
 from .ytdlp import DownloadManager
 
-log = logging.getLogger("ytbot")
+log = logging.getLogger("plexinbox")
 
 
 def build_services(

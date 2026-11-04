@@ -42,7 +42,7 @@ VIDEO_EXTS = {"mkv", "mp4", "webm", "mov", "m4v", "flv", "avi", "ogv", "ts"}
 
 JOURNAL_PREFIX = ".inflight-"
 
-log = logging.getLogger("ytbot")
+log = logging.getLogger("plexinbox")
 
 
 # --- jobs ------------------------------------------------------------------

@@ -26,7 +26,7 @@ from telegram.ext import (
     filters,
 )
 
-log = logging.getLogger("ytbot")
+log = logging.getLogger("plexinbox")
 
 from . import plex, probe as probe_mod
 from .config import Config
@@ -439,7 +439,7 @@ async def _download_video_file(context, video) -> Path | None:
         if _is_too_big(exc):
             raise VideoTooBig() from exc
         return None
-    tmpdir = Path(tempfile.mkdtemp(prefix="ytbot-up-"))
+    tmpdir = Path(tempfile.mkdtemp(prefix="plexinbox-up-"))
     dest = tmpdir / f"upload.{_ext_for(video)}"
     try:
         result = await tgfile.download_to_drive(
