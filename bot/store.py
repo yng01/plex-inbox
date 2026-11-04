@@ -52,9 +52,27 @@ class Archive:
         return entries
 
     def contains(self, key: str) -> bool:
+        """True iff the item is in the ledger AND its file still exists on disk.
+
+        A ledger entry whose on-disk file was deleted (e.g. the user removed a
+        video from the library) no longer counts as archived, so re-requesting
+        it re-downloads instead of skipping. The file path is the one recorded
+        at download time (``rel_path``), resolved against ``data_dir`` (or used
+        as-is when absolute).
+        """
         if self._cache is None:
             self._reload()
-        return key in self._cache  # type: ignore[operator]
+        entry = self._cache.get(key)  # type: ignore[union-attr]
+        if entry is None:
+            return False
+        rel = entry.rel_path
+        if not rel:
+            # Ledger present but no path recorded (shouldn't happen); trust it.
+            return True
+        path = Path(rel)
+        if not path.is_absolute():
+            path = self.data_dir / path
+        return path.exists()
 
     def add(self, key: str, requestor: str, rel_path: str, ts: str | None = None) -> None:
         entries = self._reload()
