@@ -39,6 +39,9 @@ from .probe import AudioTrack, UrlInfo
 from .store import Archive
 
 VIDEO_EXTS = {"mkv", "mp4", "webm", "mov", "m4v", "flv", "avi", "ogv", "ts"}
+#: extensions an audio-only download (``-f ba``) can land in
+AUDIO_EXTS = {"m4a", "mp3", "opus", "ogg", "oga", "aac", "flac", "wma", "mka"}
+MEDIA_EXTS = VIDEO_EXTS | AUDIO_EXTS
 
 JOURNAL_PREFIX = ".inflight-"
 
@@ -58,7 +61,7 @@ class Job:
     requestor: str
     base: str  # sanitized item id — the on-disk stem (no extension)
     target_dir: Path
-    audio_mode: str  # "all" | "orig" | "best"
+    audio_mode: str  # "all" | "orig" | "best" | "audio" (audio-only, no video)
     state: str = "queued"  # queued | downloading | done | failed | cancelled
     pct: float = 0.0
     speed: str = ""
@@ -190,12 +193,15 @@ def format_args(
 ) -> list[str]:
     """Build the yt-dlp format-selection flags.
 
-    * all  -> best video + *all* audio-only formats, merged (mkv carries them all)
-    * orig -> best video + the *original-language* audio track if the probe knows
+    * all   -> best video + *all* audio-only formats, merged (mkv carries them all)
+    * orig  -> best video + the *original-language* audio track if the probe knows
       the video's language (``bv*+ba[language=xx]/bv*+ba/b``), else the single
       best audio. Every fallback keeps a video stream, so this mode never
       degrades to audio-only.
-    * best -> best video + single best audio (alias of ``orig`` without a language)
+    * audio -> audio *only* (no video stream): the original-language track when
+      the probe knows it (``ba[language=xx]/ba/b``), else the best audio track
+      (the trailing ``b`` covers sites that ship no audio-only formats)
+    * best  -> best video + single best audio (alias of ``orig`` without a language)
     * a user VIDEO_FORMAT override wins over all of the above.
 
     Note: yt-dlp's format filters key on the field name ``language`` (``lang``
@@ -206,6 +212,13 @@ def format_args(
         return ["-f", video_format]
     if audio_mode == "all":
         return ["-f", "bv*+mergeall[vcodec=none]", "--audio-multistreams"]
+    if audio_mode == "audio":
+        # no video stream at all — original-language track when known, else any
+        # audio-only track; only if a site has no audio-only formats at all does
+        # the last ``b`` fallback hand back a combined file (better than failing)
+        if language:
+            return ["-f", f"ba[language={language}]/ba/b"]
+        return ["-f", "ba/b"]
     if audio_mode == "orig" and language:
         return ["-f", f"bv*+ba[language={language}]/bv*+ba/b"]
     return ["-f", "bv*+ba/b"]
@@ -328,11 +341,12 @@ def _snapshot(d: Path) -> set[Path]:
         return set()
 
 
-def _find_video(d: Path, base: str) -> Path | None:
+def _find_media(d: Path, base: str) -> Path | None:
+    """The final media file (video *or* audio-only) for this job's base name."""
     if not d.exists():
         return None
     for p in d.iterdir():
-        if p.stem == base and p.suffix.lower().lstrip(".") in VIDEO_EXTS:
+        if p.stem == base and p.suffix.lower().lstrip(".") in MEDIA_EXTS:
             return p
     return None
 
@@ -373,7 +387,7 @@ def cleanup_leftovers(data_dir: str | Path) -> int:
         if d.exists():
             for p in list(d.iterdir()):
                 hit = False
-                if base and p.stem == base and p.suffix.lower().lstrip(".") in VIDEO_EXTS:
+                if base and p.stem == base and p.suffix.lower().lstrip(".") in MEDIA_EXTS:
                     hit = True
                 if base and p.name in (f"{base}.nfo", f"{base}.jpg"):
                     hit = True
@@ -819,13 +833,13 @@ class DownloadManager:
     async def _finalize(self, job: Job) -> None:
         info = job.info
         d = job.target_dir
-        video = _find_video(d, job.base)
+        video = _find_media(d, job.base)
         if video is None:
-            # fall back to the newest video file the run produced
+            # fall back to the newest media file the run produced
             vids = [
                 p
                 for p in d.iterdir()
-                if p.suffix.lower().lstrip(".") in VIDEO_EXTS
+                if p.suffix.lower().lstrip(".") in MEDIA_EXTS
             ]
             video = max(vids, key=lambda p: p.stat().st_mtime) if vids else None
         if video is None:

@@ -125,8 +125,9 @@ PAT, or set the registry credentials in `~/.docker/config.json`).
 
 - **➕ Add a video** — tap it (or send `/add <url>`, or just paste a link). The bot
   probes the URL and shows title / site / channel / duration / resolution / audio
-  tracks with **Download** and **Cancel**. Playlist URLs additionally offer
-  **Download all** and per-entry browsing.
+  tracks with download options (**all audio**, **original audio**, **audio only** —
+  no video) and **Cancel**. Playlist URLs additionally offer **Download all** and
+  per-entry browsing.
 - **⏳ Queue** — see active and queued downloads; **Cancel** works on any of them.
 - **📚 Library** — browse site → channel → files (size, date, audio tracks), with paging.
 - **📊 Stats** — totals, per-site and per-requestor breakdowns, queue length, and the
@@ -203,6 +204,8 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
    - **Original audio**: `bv*+ba[language=<lang>]/bv*+ba/b` — best video + the
      original-language track (video is kept in every fallback, so it never degrades
      to audio-only).
+   - **Audio only**: `ba[language=<lang>]/ba/b` — no video stream; the original-language
+     track when the probe knows it, else the best audio (lands as `.m4a`/`.mp3`/…).
    - **Single track**: `bv*+ba/b`.
 5. **Finalize** — thumbnail download, NFO + sidecar write, channel poster, archive
    ledger entry, optional Plex refresh, final ✅ message.

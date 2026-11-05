@@ -101,7 +101,15 @@ def test_format_args_orig_without_language_falls_back_to_best():
     assert format_args(None, "orig") == ["-f", "bv*+ba/b"]
 
 
-@pytest.mark.parametrize("mode", ["all", "best"])
+def test_format_args_audio_only_prefers_original_language():
+    assert format_args(None, "audio", "ar") == ["-f", "ba[language=ar]/ba/b"]
+
+
+def test_format_args_audio_only_without_language():
+    assert format_args(None, "audio") == ["-f", "ba/b"]
+
+
+@pytest.mark.parametrize("mode", ["all", "orig", "best", "audio"])
 def test_format_args_user_override_wins(mode):
     assert format_args("137+140", mode) == ["-f", "137+140"]
 
@@ -228,6 +236,15 @@ def test_cmd_orig_mode_selects_original_language(tmp_path):
     job = mgr.enqueue(make_info(language="ar"), requestor="ali", audio_mode="orig")
     cmd = mgr._cmd(job)
     assert cmd[cmd.index("-f") + 1] == "bv*+ba[language=ar]/bv*+ba/b"
+    assert "--audio-multistreams" not in cmd
+
+
+def test_cmd_audio_mode_selects_audio_only(tmp_path):
+    cfg = make_config(tmp_path)
+    mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
+    job = mgr.enqueue(make_info(language="ar"), requestor="ali", audio_mode="audio")
+    cmd = mgr._cmd(job)
+    assert cmd[cmd.index("-f") + 1] == "ba[language=ar]/ba/b"
     assert "--audio-multistreams" not in cmd
 
 
@@ -382,6 +399,46 @@ async def test_best_mode_embeds_single_track_and_omits_audio_tags(tmp_path):
     sc = json.loads((d / "abc123.info.json").read_text(encoding="utf-8"))
     assert len(sc["audio_tracks"]) == 1
     assert sc["requestor"] == "user:999"
+
+
+async def test_audio_mode_finalizes_audio_only_file(tmp_path):
+    """Audio-only mode downloads just the audio track (e.g. an .m4a); finalize
+    must recognize it as the job's output (not require a video extension) and
+    still write NFO + sidecar and record the dedupe entry."""
+    cfg = make_config(tmp_path)
+    archive = Archive(cfg.data_dir)
+    spawner = RecordingSpawner()
+    http = FakeHttp()
+    mgr = DownloadManager(cfg, archive, spawner=spawner, http=http)
+
+    d = cfg.data_dir / "YouTube" / "Cool Channel"
+    d.mkdir(parents=True, exist_ok=True)
+    spawner.push(
+        FakeLineProc(
+            lines=["download: PROG|100.0%|1.0MiB/s|00:00|DL=100|TOT=100|EST=NA"],
+            on_finish=lambda: (d / "abc123.m4a").write_bytes(b"a" * 100),
+        )
+    )
+    job = mgr.enqueue(
+        make_info(audio_tracks=[AudioTrack(language="ar", codec="aac")]),
+        requestor="user:999",
+        audio_mode="audio",
+    )
+    await mgr.start()
+    try:
+        assert await mgr.wait_idle(timeout=5.0)
+    finally:
+        await mgr.stop(grace=0.2)
+
+    assert job.state == "done"
+    assert job.audio_count == 1
+    assert job.final_path.endswith("abc123.m4a")
+    assert (d / "abc123.m4a").exists()
+    assert (d / "abc123.nfo").exists()
+    sc = json.loads((d / "abc123.info.json").read_text(encoding="utf-8"))
+    assert sc["requestor"] == "user:999"
+    assert sc["final_path"].endswith("abc123.m4a")
+    assert archive.contains("YouTube:abc123")
 
 
 async def test_poster_prefers_youtube_channel_avatar_over_thumbnail(tmp_path):

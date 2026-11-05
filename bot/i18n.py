@@ -78,6 +78,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "⬇️ Download (original audio)",
         "ar": "⬇️ تحميل (الصوت الأصلي)",
     },
+    "btn_audio_only": {
+        "en": "🎵 Audio only (no video)",
+        "ar": "🎵 صوت فقط (بدون فيديو)",
+    },
+    "btn_audio_only_n": {
+        "en": "🎵 Audio only (all {n})",
+        "ar": "🎵 صوت فقط (الكل {n})",
+    },
     "btn_cancel": {"en": "❌ Cancel", "ar": "❌ إلغاء"},
     "btn_download_all_n": {
         "en": "⬇️ Download all {n}",

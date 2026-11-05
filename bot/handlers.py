@@ -237,6 +237,7 @@ async def _render_confirm(
         )
         if s.config.multi_audio:
             rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
+        rows.append([InlineKeyboardButton(t(lang, "btn_audio_only_n", n=n), callback_data="ao")])
         for i, e in enumerate(chunk):
             idx = start + i
             label = f"{idx + 1}. {e.title[:30]}"
@@ -263,6 +264,7 @@ async def _render_confirm(
         else:
             # single-track mode: original audio (the only option without MULTI_AUDIO)
             rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
+        rows.append([InlineKeyboardButton(t(lang, "btn_audio_only"), callback_data="ao")])
         rows.append([InlineKeyboardButton(t(lang, "btn_cancel"), callback_data="c")])
         markup = InlineKeyboardMarkup(rows)
 
@@ -798,10 +800,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         # confirm flow
-        if data in ("da", "db"):
-            mode = "all" if data == "da" else "orig"
-            if not s.config.multi_audio:
-                mode = "orig"
+        if data in ("da", "db", "ao"):
+            if data == "ao":
+                mode = "audio"
+            else:
+                mode = "all" if data == "da" else "orig"
+                if not s.config.multi_audio:
+                    mode = "orig"
             await _enqueue(update, context, mode)
             return
         if data.startswith("e") and data[1:].isdigit():

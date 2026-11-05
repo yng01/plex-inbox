@@ -140,6 +140,18 @@ async def test_original_audio_button_sets_mode_and_closes_keyboard(tmp_path):
     _assert_closed(cq.message)
 
 
+async def test_audio_only_button_sets_mode_and_closes_keyboard(tmp_path):
+    cfg, svc, ctx = make_env(tmp_path)
+    ctx.user_data["pending"] = {"info": _video(), "page": 0}
+    cq, upd = _callback("ao")
+
+    await handlers.on_callback(upd, ctx)
+
+    job = next(iter(svc.manager._jobs.values()))
+    assert job.audio_mode == "audio"
+    _assert_closed(cq.message)
+
+
 async def test_download_of_archived_item_reports_skip_and_closes(tmp_path):
     cfg, svc, ctx = make_env(tmp_path)
     rel = "YouTube/Cool Channel/abc123.mkv"
@@ -181,6 +193,20 @@ async def test_playlist_download_fans_out_and_closes(tmp_path):
 
     assert len(svc.manager._jobs) == 3
     assert ctx.user_data["pending"] is None
+    assert cq.message.edits[-1] == t("en", "added_many", n=3)
+    _assert_closed(cq.message)
+
+
+async def test_playlist_audio_only_fans_out_with_audio_mode(tmp_path):
+    cfg, svc, ctx = make_env(tmp_path)
+    ctx.user_data["pending"] = {"info": _playlist(), "page": 0}
+    cq, upd = _callback("ao")
+
+    await handlers.on_callback(upd, ctx)
+
+    jobs = list(svc.manager._jobs.values())
+    assert len(jobs) == 3
+    assert all(j.audio_mode == "audio" for j in jobs)
     assert cq.message.edits[-1] == t("en", "added_many", n=3)
     _assert_closed(cq.message)
 
@@ -237,7 +263,7 @@ async def test_url_confirm_replaces_probing_message(tmp_path):
     markup = status.edit_markups[-1]
     assert isinstance(markup, InlineKeyboardMarkup)
     datas = [b.callback_data for row in markup.inline_keyboard for b in row]
-    assert "da" in datas and "c" in datas
+    assert "da" in datas and "db" in datas and "ao" in datas and "c" in datas
     # no *second* confirm message below the status one
     assert msg.replies == [t("en", "probing")]
     assert ctx.user_data["pending"]["info"].id == "abc123"
