@@ -240,6 +240,62 @@ STRINGS: dict[str, dict[str, str]] = {
         "ar": "✅ تم ضبط اللغة على {lang}.",
     },
 
+    # --- Settings (per-user default download options) ---
+    "menu_settings": {
+        "en": "⚙️ Settings",
+        "ar": "⚙️ الإعدادات",
+    },
+    "settings_title": {
+        "en": "⚙️ Your download settings",
+        "ar": "⚙️ إعدادات التنزيل الخاصة بك",
+    },
+    "settings_audio": {
+        "en": "Audio: {label}",
+        "ar": "الصوت: {label}",
+    },
+    "settings_quality": {
+        "en": "Quality: {label}",
+        "ar": "الجودة: {label}",
+    },
+    "settings_auto": {
+        "en": "Auto-download: {label}",
+        "ar": "التنزيل التلقائي: {label}",
+    },
+    "settings_hint": {
+        "en": "With auto-download on, a link you send is queued right away using these options. Turn it off to be asked every time.",
+        "ar": "عند تفعيل التنزيل التلقائي، يتم تحميل الرابط الذي ترسله فوراً بهذه الإعدادات. عطّله لتُسأل في كل مرة.",
+    },
+    "settings_saved": {
+        "en": "✅ Settings saved.",
+        "ar": "✅ تم حفظ الإعدادات.",
+    },
+    "mode_all": {
+        "en": "All audio tracks",
+        "ar": "كل مسارات الصوت",
+    },
+    "mode_orig": {
+        "en": "Original audio",
+        "ar": "الصوت الأصلي",
+    },
+    "mode_audio": {
+        "en": "Audio only (no video)",
+        "ar": "صوت فقط (بدون فيديو)",
+    },
+    "q_best": {
+        "en": "Best",
+        "ar": "الأفضل",
+    },
+    "on": {"en": "On", "ar": "مفعّل"},
+    "off": {"en": "Off", "ar": "معطّل"},
+    "auto_on": {
+        "en": "Auto-download: On",
+        "ar": "التنزيل التلقائي: تفعيل",
+    },
+    "auto_off": {
+        "en": "Auto-download: Off",
+        "ar": "التنزيل التلقائي: تعطيل",
+    },
+
     # --- Errors (user-safe, short) ---
     "error_generic": {
         "en": "😕 Something went wrong. Please try again.",

@@ -62,6 +62,7 @@ class Job:
     base: str  # sanitized item id — the on-disk stem (no extension)
     target_dir: Path
     audio_mode: str  # "all" | "orig" | "best" | "audio" (audio-only, no video)
+    quality: int | None = None  # height cap (e.g. 720); None = best available
     state: str = "queued"  # queued | downloading | done | failed | cancelled
     pct: float = 0.0
     speed: str = ""
@@ -186,10 +187,18 @@ Spawner = Callable[[Sequence[str]], Awaitable[object]]
 # --- pure helpers -----------------------------------------------------------
 
 
+def _video_pref(quality: int | None) -> str:
+    """The ``bv`` selection prefix for a height cap (``None`` = best available)."""
+    if quality:
+        return f"bv*[height<={quality}]"
+    return "bv*"
+
+
 def format_args(
     video_format: str | None,
     audio_mode: str,
     language: str | None = None,
+    quality: int | None = None,
 ) -> list[str]:
     """Build the yt-dlp format-selection flags.
 
@@ -203,6 +212,9 @@ def format_args(
       (the trailing ``b`` covers sites that ship no audio-only formats)
     * best  -> best video + single best audio (alias of ``orig`` without a language)
     * a user VIDEO_FORMAT override wins over all of the above.
+    * ``quality`` (a height cap such as ``720``) constrains the *video* part to
+      ``bv*[height<=720]`` (best video at or below that height). It has no effect
+      in ``audio`` mode (there is no video stream to cap).
 
     Note: yt-dlp's format filters key on the field name ``language`` (``lang``
     is *not* a valid key and silently fails, dropping the selection to the
@@ -210,8 +222,9 @@ def format_args(
     """
     if video_format:
         return ["-f", video_format]
+    v = _video_pref(quality)
     if audio_mode == "all":
-        return ["-f", "bv*+mergeall[vcodec=none]", "--audio-multistreams"]
+        return ["-f", f"{v}+mergeall[vcodec=none]", "--audio-multistreams"]
     if audio_mode == "audio":
         # no video stream at all — original-language track when known, else any
         # audio-only track; only if a site has no audio-only formats at all does
@@ -220,8 +233,8 @@ def format_args(
             return ["-f", f"ba[language={language}]/ba/b"]
         return ["-f", "ba/b"]
     if audio_mode == "orig" and language:
-        return ["-f", f"bv*+ba[language={language}]/bv*+ba/b"]
-    return ["-f", "bv*+ba/b"]
+        return ["-f", f"{v}+ba[language={language}]/{v}+ba/b"]
+    return ["-f", f"{v}+ba/b"]
 
 
 # Progress line (one per --progress-delta tick), built from the template in
@@ -532,6 +545,7 @@ class DownloadManager:
         audio_mode: str,
         url: str | None = None,
         source_path: Path | str | None = None,
+        quality: int | None = None,
     ) -> Job:
         site = plex.sanitize_filename(info.site or "unknown") or "unknown"
         channel = plex.sanitize_filename(info.channel or "unknown") or "unknown"
@@ -550,6 +564,7 @@ class DownloadManager:
             base=base,
             target_dir=target_dir,
             audio_mode=audio_mode,
+            quality=quality,
             info=info,
             source_path=Path(source_path) if source_path else None,
         )
@@ -660,7 +675,9 @@ class DownloadManager:
 
     def _cmd(self, job: Job) -> list[str]:
         lang = job.info.language if job.info is not None else None
-        fmt = format_args(self.config.video_format, job.audio_mode, lang)
+        fmt = format_args(
+            self.config.video_format, job.audio_mode, lang, job.quality
+        )
         out = job.target_dir / (job.base + ".%(ext)s")
         return [
             self.ytdlp_bin,

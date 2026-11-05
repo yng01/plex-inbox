@@ -114,6 +114,31 @@ def test_format_args_user_override_wins(mode):
     assert format_args("137+140", mode) == ["-f", "137+140"]
 
 
+def test_format_args_quality_caps_video_part_in_orig_mode():
+    assert format_args(None, "orig", "ar", 720) == [
+        "-f",
+        "bv*[height<=720]+ba[language=ar]/bv*[height<=720]+ba/b",
+    ]
+
+
+def test_format_args_quality_caps_video_part_in_all_mode():
+    assert format_args(None, "all", quality=480) == [
+        "-f",
+        "bv*[height<=480]+mergeall[vcodec=none]",
+        "--audio-multistreams",
+    ]
+
+
+def test_format_args_quality_has_no_effect_in_audio_mode():
+    # no video stream in audio-only mode, so a height cap is inert
+    assert format_args(None, "audio", "ar", 1080) == ["-f", "ba[language=ar]/ba/b"]
+    assert format_args(None, "audio", quality=360) == ["-f", "ba/b"]
+
+
+def test_format_args_quality_none_means_best_available():
+    assert format_args(None, "orig", quality=None) == ["-f", "bv*+ba/b"]
+
+
 def test_parse_progress_line():
     assert parse_progress(
         "download: PROG|45.0%|1.2MiB/s|00:10|DL=1048576|TOT=4194304|EST=NA"

@@ -25,6 +25,7 @@ a JSON sidecar, all audio tracks embedded, and dedupe so nothing downloads twice
 | `bot/main.py` | Entry point: build the PTB `Application`, wire base URLs, wait for the Bot API server, start polling. |
 | `bot/handlers.py` | All Telegram command/message handlers: menu, add-by-URL, `on_video`, queue/library/stats views, `on_video` download path. |
 | `bot/i18n.py` | **All** user-facing strings, EN + AR. `t(lang, key, **kw)` renders. |
+| `bot/settings.py` | Per-user download defaults (audio mode, quality, auto-download); JSON on the data volume, keyed by user id. |
 | `bot/probe.py` | Probe a URL with yt-dlp → `UrlInfo` (title, id, entries, audio tracks, …). |
 | `bot/store.py` | `Archive` (dedupe ledger), `Library` (browse sidecars), `Stats`. |
 | `bot/plex.py` | `sanitize_filename`, NFO/sidecar writers, poster/thumbnail selection + download. |

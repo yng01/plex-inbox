@@ -15,6 +15,7 @@ from telegram import InlineKeyboardMarkup
 from bot import handlers
 from bot.config import load_config
 from bot.i18n import open_store, t
+from bot.settings import SettingsStore
 from bot.probe import Entry, UrlInfo
 from bot.store import Archive, Library, Stats
 from bot.updater import Updater
@@ -50,6 +51,7 @@ def make_env(tmp_path):
     svc = handlers.Services(
         config=cfg,
         lang_store=open_store(str(tmp_path / "langs.json"), "en"),
+        settings_store=SettingsStore(tmp_path / "settings.json"),
         probe_spawner=object(),
         archive=archive,
         library=Library(cfg.data_dir),

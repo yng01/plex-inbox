@@ -32,6 +32,7 @@ from . import plex, probe as probe_mod
 from .config import Config
 from .i18n import LanguageStore, t, user_display
 from .probe import Entry, ProbeError, UrlInfo
+from .settings import AUDIO_MODES, QUALITIES, SettingsStore
 from .store import Archive, Library, Stats, dedupe_key
 from .updater import Updater
 from .ytdlp import VIDEO_EXTS, DownloadManager, Job
@@ -49,6 +50,7 @@ FILE_FETCH_TIMEOUT = 3600.0
 class Services:
     config: Config
     lang_store: LanguageStore
+    settings_store: SettingsStore
     probe_spawner: object
     archive: Archive
     library: Library
@@ -118,6 +120,7 @@ def main_menu_keyboard(s: Services, lang: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(t(lang, "menu_stats"), callback_data="m_stats"),
             InlineKeyboardButton(t(lang, "menu_lang"), callback_data="m_lang"),
         ],
+        [InlineKeyboardButton(t(lang, "menu_settings"), callback_data="m_settings")],
     ]
     return InlineKeyboardMarkup(kb)
 
@@ -184,7 +187,33 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # screen (whose buttons would all just report "skipped")
         await status.edit_text(L(context, update, "already_in_library"))
         return
-    context.user_data["pending"] = {"info": info, "page": 0}
+
+    settings = s.settings_store.get(user_id(update))
+
+    if settings.auto_download:
+        # the user opted out of being asked: start the download now, using their
+        # saved audio mode + quality, and reuse the in-flight status message as
+        # the job's (no dangling "probing" message, no second message).
+        mode = settings.audio_mode
+        if mode == "all" and not s.config.multi_audio:
+            mode = "orig"  # "all audio tracks" only exists with MULTI_AUDIO
+        req = _requestor(update)
+        lang = lang_for(context, update)
+        if info.is_playlist:
+            context.user_data["pending"] = {"info": info, "page": 0, "quality": settings.quality}
+            await _enqueue(update, context, mode, status_msg=status)
+        else:
+            job = await _add_job(
+                update, context, info, req, lang, mode,
+                status_msg=status, quality=settings.quality,
+            )
+            if job is None:  # already archived (pre-check race)
+                await status.edit_text(L(context, update, "already_in_library"))
+        return
+
+    # "ask me every time" (the default): the confirm screen, pre-filled with the
+    # user's default quality
+    context.user_data["pending"] = {"info": info, "page": 0, "quality": settings.quality}
     try:
         # edit the "🔎 Fetching…" status message *in place* into the confirm
         # screen (never send a second message and leave the status dangling)
@@ -198,6 +227,23 @@ def _audio_label(s: Services, lang: str, info: UrlInfo) -> str:
         return t(lang, "audio_none")
     parts = [f"{a.language} · {a.codec}" for a in info.audio_tracks[:8]]
     return ", ".join(parts)
+
+
+def _audio_mode_label(lang: str, mode: str) -> str:
+    """Human label for an audio mode (settings + confirm screen)."""
+    return t(lang, {"all": "mode_all", "orig": "mode_orig", "audio": "mode_audio"}.get(mode, "mode_orig"))
+
+
+def _quality_label(lang: str, quality: int | None) -> str:
+    """Human label for a quality choice (``None`` = best available)."""
+    if quality is None:
+        return t(lang, "q_best")
+    return f"{quality}p"
+
+
+def _quality_options() -> list[int | None]:
+    """Quality choices offered: best first, then the heights in descending order."""
+    return [None, *sorted(QUALITIES, reverse=True)]
 
 
 def _detail_lines(context, update, info: UrlInfo) -> list[str]:
@@ -223,7 +269,20 @@ async def _render_confirm(
 ) -> None:
     s = svc(context)
     lang = lang_for(context, update)
+    pending = context.user_data.get("pending") or {}
+    sel_q = pending.get("quality")
     lines = _detail_lines(context, update, info)
+
+    def _quality_row() -> list[InlineKeyboardButton]:
+        # video-resolution cap; the ✓ marks the current choice (best by default).
+        # Only meaningful for video downloads — audio-only ignores it.
+        return [
+            InlineKeyboardButton(
+                ("✓ " if sel_q == q else "") + _quality_label(lang, q),
+                callback_data="qbest" if q is None else f"q{q}",
+            )
+            for q in _quality_options()
+        ]
 
     if info.is_playlist:
         n = len(info.entries)
@@ -236,7 +295,7 @@ async def _render_confirm(
         start = page * page_size
         chunk = info.entries[start : start + page_size]
 
-        rows: list[list[InlineKeyboardButton]] = []
+        rows: list[list[InlineKeyboardButton]] = [_quality_row()]
         rows.append(
             [
                 InlineKeyboardButton(
@@ -272,7 +331,7 @@ async def _render_confirm(
         # downloaded mode would just report "skipped", so hide it instead
         video_done = s.archive.contains(dedupe_key(info.site, info.id, False))
         audio_done = s.archive.contains(dedupe_key(info.site, info.id, True))
-        rows = []
+        rows = [_quality_row()]
         if not video_done:
             if s.config.multi_audio:
                 rows.append(
@@ -332,13 +391,15 @@ async def _add_job(
     audio_mode: str,
     source_path: Path | None = None,
     status_msg: object | None = None,
+    quality: int | None = None,
 ) -> Job | None:
     """Enqueue one job and create its single status message. None if already archived.
 
     ``source_path`` marks the job as a local-file archive (a video sent to the bot)
     instead of a URL download. ``status_msg``, when given, is an already-sent
     message (e.g. the "receiving…" reply) that becomes the job's status message so
-    the user sees one continuous message rather than two.
+    the user sees one continuous message rather than two. ``quality`` is the
+    height cap (``None`` = best available) for video downloads.
     """
     s = svc(context)
     # mode-scoped key: an audio-only download of this item (or of a sibling one)
@@ -352,6 +413,7 @@ async def _add_job(
         audio_mode=audio_mode,
         url=info.url,
         source_path=source_path,
+        quality=quality,
     )
     job.lang = lang
     job.bot = context.bot
@@ -374,16 +436,18 @@ async def _enqueue(
     context: ContextTypes.DEFAULT_TYPE,
     audio_mode: str,
     entry_idx: int | None = None,
+    status_msg: object | None = None,
 ) -> None:
     s = svc(context)
     pending = context.user_data.get("pending") or {}
     base_info: UrlInfo = pending["info"]
+    quality = pending.get("quality")
     req = _requestor(update)
     lang = lang_for(context, update)
 
     if entry_idx is not None:
         # a single playlist entry
-        job = await _add_job(update, context, _target_info(context, entry_idx), req, lang, audio_mode)
+        job = await _add_job(update, context, _target_info(context, entry_idx), req, lang, audio_mode, quality=quality)
         context.user_data["pending"] = None
         if job is None:
             await _close_confirm(update, context, "already_in_library")
@@ -393,7 +457,7 @@ async def _enqueue(
 
     if not base_info.is_playlist:
         # single video
-        job = await _add_job(update, context, base_info, req, lang, audio_mode)
+        job = await _add_job(update, context, base_info, req, lang, audio_mode, quality=quality)
         context.user_data["pending"] = None
         if job is None:
             await _close_confirm(update, context, "already_in_library")
@@ -404,18 +468,18 @@ async def _enqueue(
     # playlist: fan out to one independently cancellable job per entry
     added = skipped = 0
     for i in range(len(base_info.entries)):
-        job = await _add_job(update, context, _target_info(context, i), req, lang, audio_mode)
+        job = await _add_job(update, context, _target_info(context, i), req, lang, audio_mode, quality=quality)
         if job is None:
             skipped += 1
         else:
             added += 1
     context.user_data["pending"] = None
     if added and skipped:
-        await _close_confirm(update, context, "added_many_skip", n=added, m=skipped)
+        await _close_confirm(update, context, "added_many_skip", n=added, m=skipped, status_msg=status_msg)
     elif added:
-        await _close_confirm(update, context, "added_many", n=added)
+        await _close_confirm(update, context, "added_many", n=added, status_msg=status_msg)
     else:
-        await _close_confirm(update, context, "already_in_library")
+        await _close_confirm(update, context, "already_in_library", status_msg=status_msg)
 
 
 async def _reply(update, context, key: str, **kw) -> None:
@@ -425,7 +489,9 @@ async def _reply(update, context, key: str, **kw) -> None:
         await update.effective_message.reply_text(L(context, update, key, **kw))
 
 
-async def _close_confirm(update, context, key: str | None = None, **kw) -> None:
+async def _close_confirm(
+    update, context, key: str | None = None, status_msg: object | None = None, **kw
+) -> None:
     """Close the confirm screen once a choice has been made.
 
     ``edit_message_text`` with no ``reply_markup`` (PTB drops ``None`` from the
@@ -433,12 +499,17 @@ async def _close_confirm(update, context, key: str | None = None, **kw) -> None:
     cancel buttons would stay visible and clickable; an empty
     ``InlineKeyboardMarkup`` removes it. Without ``key`` the current text (the
     item details) is kept.
+
+    ``status_msg`` is the auto-download path's stand-in for the confirm screen:
+    when there is no callback query (the user sent a link and auto-download is on)
+    the result is written to that in-flight status message instead.
     """
     cq = update.callback_query
-    if not (cq and cq.message):
-        return
-    text = L(context, update, key, **kw) if key else (cq.message.text or "")
-    await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup([]))
+    if cq and cq.message:
+        text = L(context, update, key, **kw) if key else (cq.message.text or "")
+        await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup([]))
+    elif status_msg is not None and key is not None:
+        await status_msg.edit_text(L(context, update, key, **kw))
 
 
 # --- video files (sent to the bot) ------------------------------------------
@@ -792,6 +863,58 @@ async def render_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.effective_message.reply_text(text, reply_markup=kb)
 
 
+# --- settings (per-user default download options) ---------------------------
+
+async def render_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show the user's default download options and let them change them.
+
+    The current values are shown as text; the ✓-marked buttons make changes.
+    Each change re-renders this screen in place so the new state is visible.
+    """
+    s = svc(context)
+    lang = lang_for(context, update)
+    uid = user_id(update)
+    st = s.settings_store.get(uid)
+    lines = [
+        t(lang, "settings_title"),
+        "",
+        t(lang, "settings_audio", label=_audio_mode_label(lang, st.audio_mode)),
+        t(lang, "settings_quality", label=_quality_label(lang, st.quality)),
+        t(lang, "settings_auto", label=t(lang, "on") if st.auto_download else t(lang, "off")),
+        "",
+        t(lang, "settings_hint"),
+    ]
+    rows = [
+        [
+            InlineKeyboardButton(
+                ("✓ " if st.audio_mode == m else "") + _audio_mode_label(lang, m),
+                callback_data=f"sa_{m}",
+            )
+            for m in AUDIO_MODES
+        ],
+        [
+            InlineKeyboardButton(
+                ("✓ " if st.quality == q else "") + _quality_label(lang, q),
+                callback_data="sqbest" if q is None else f"sq{q}",
+            )
+            for q in _quality_options()
+        ],
+        [
+            InlineKeyboardButton(
+                t(lang, "auto_on") if st.auto_download else t(lang, "auto_off"),
+                callback_data="sauto",
+            )
+        ],
+        [InlineKeyboardButton(t(lang, "menu_title"), callback_data="mmenu")],
+    ]
+    markup = InlineKeyboardMarkup(rows)
+    text = "\n".join(lines)
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text, reply_markup=markup)
+    else:
+        await update.effective_message.reply_text(text, reply_markup=markup)
+
+
 # --- callback dispatcher ----------------------------------------------------
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -821,8 +944,26 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if data == "m_lang":
             await render_lang(update, context)
             return
+        if data == "m_settings":
+            await render_settings(update, context)
+            return
 
         # confirm flow
+        # quality choice: store it on the pending item and re-render so the ✓
+        # moves to the tapped button (the mode buttons then use this quality)
+        if data == "qbest":
+            pending = context.user_data.get("pending")
+            if pending is not None:
+                pending["quality"] = None
+                await _render_confirm(update, context, pending["info"])
+            return
+        if data.startswith("q") and data[1:].isdigit():
+            pending = context.user_data.get("pending")
+            qval = int(data[1:])
+            if pending is not None and qval in QUALITIES:
+                pending["quality"] = qval
+                await _render_confirm(update, context, pending["info"])
+            return
         if data in ("da", "db", "ao"):
             if data == "ao":
                 mode = "audio"
@@ -887,6 +1028,29 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             if ch and stack:
                 context.user_data["lib_stack"] = [stack[0], ch]
                 await render_library(update, context)
+            return
+
+        # settings changes (each re-renders the settings screen in place)
+        if data.startswith("sa_"):
+            mode = data[3:]
+            if mode in AUDIO_MODES:
+                s.settings_store.set_audio_mode(user_id(update), mode)
+                await render_settings(update, context)
+            return
+        if data == "sqbest":
+            s.settings_store.set_quality(user_id(update), None)
+            await render_settings(update, context)
+            return
+        if data.startswith("sq") and data[2:].isdigit():
+            qval = int(data[2:])
+            if qval in QUALITIES:
+                s.settings_store.set_quality(user_id(update), qval)
+            await render_settings(update, context)
+            return
+        if data == "sauto":
+            cur = s.settings_store.get(user_id(update))
+            s.settings_store.set_auto_download(user_id(update), not cur.auto_download)
+            await render_settings(update, context)
             return
 
         # language

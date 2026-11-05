@@ -26,6 +26,13 @@ attributed to the person who requested it.
 - **Multi-audio** — when `MULTI_AUDIO=1` and a video has several audio tracks, all of
   them are embedded as separate streams in MKV and exposed in Plex as selectable
   audio. Single-track videos are unaffected (best video+audio, MP4).
+- **Quality selection + per-user defaults** — the confirmation screen offers a video
+  resolution cap (best / 1080p / 720p / 480p / 360p). Under **⚙️ Settings**, each user
+  sets their own defaults: audio mode (all tracks / original audio / audio-only),
+  quality, and **auto-download** — with it on, sending a link skips the confirmation
+  screen and starts the download immediately with the saved options (the "probing…"
+  message just becomes the job's progress message). Off (the default) means "ask me
+  every time", with the saved values pre-filling the screen.
 - **Plex-ready on disk** — files are named after the item's own id (stable, never
   collides), per-video thumbnail with a matching
   stem, channel poster, and a Kodi-style NFO carrying `<title>`, `<summary>`,
@@ -200,7 +207,9 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
 
 1. **Probe** — `yt-dlp -J <url>` (60 s timeout). Failures are classified into short,
    user-safe messages (unsupported / private / region / unavailable / timeout).
-2. **Confirm** — details + inline buttons; nothing downloads until you say so.
+2. **Confirm** — details + inline buttons (audio mode **and** quality); nothing
+   downloads until you say so. With auto-download enabled in **Settings**, this step
+   is skipped and the job starts immediately with the user's saved options.
 3. **Queue** — at most `MAX_CONCURRENT` jobs run at once; the rest wait in an
    ordered queue.
 4. **Download** — `yt-dlp` runs as a child process with a progress template; the bot
@@ -212,6 +221,9 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
    - **Audio only**: `ba[language=<lang>]/ba/b` — no video stream; the original-language
      track when the probe knows it, else the best audio (lands as `.m4a`/`.mp3`/…).
    - **Single track**: `bv*+ba/b`.
+   - **Quality cap** (optional): the `bv*` part becomes `bv*[height<=<cap>]`, so the
+     best video *at or below* that height is chosen. It applies to the video stream
+     only — audio-only downloads ignore it (there is no video stream to cap).
 5. **Finalize** — thumbnail download, NFO + sidecar write, channel poster, archive
    ledger entry, optional Plex refresh, final ✅ message.
 6. **Failure / cancel** — the process is killed and exactly the files that appeared
@@ -239,6 +251,7 @@ Modules:
 |---|---|
 | `bot/config.py` | env parsing/validation (fail fast with `ConfigError`) |
 | `bot/i18n.py` | all user-facing strings, EN + AR, per-user language store |
+| `bot/settings.py` | per-user download defaults (audio mode, quality, auto-download), JSON on the data volume |
 | `bot/probe.py` | `yt-dlp -J` probe, URL/entry/audio-track parsing, error classification |
 | `bot/ytdlp.py` | download manager: queue, workers, progress, cancel, cleanup |
 | `bot/plex.py` | naming, NFO, sidecar, poster, Plex refresh |

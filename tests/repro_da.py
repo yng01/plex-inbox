@@ -15,6 +15,7 @@ from bot import handlers  # noqa: E402
 from bot.config import load_config  # noqa: E402
 from bot.i18n import open_store  # noqa: E402
 from bot.probe import AudioTrack, UrlInfo  # noqa: E402
+from bot.settings import SettingsStore  # noqa: E402
 from bot.store import Archive, Library, Stats  # noqa: E402
 from bot.updater import Updater  # noqa: E402
 from bot.ytdlp import DownloadManager  # noqa: E402
@@ -44,6 +45,7 @@ def build():
     svc = handlers.Services(
         config=cfg,
         lang_store=open_store(f"{tmp}/langs.json", "en"),
+        settings_store=SettingsStore(f"{tmp}/settings.json"),
         probe_spawner=object(),
         archive=archive,
         library=Library(cfg.data_dir),

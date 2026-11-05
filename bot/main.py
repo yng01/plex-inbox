@@ -26,6 +26,7 @@ from . import handlers, ytdlp as ytdlp_mod
 from .config import Config, load_config
 from .i18n import open_store
 from .probe import RealProbeSpawner
+from .settings import SettingsStore
 from .store import Archive, Library, Stats
 from .updater import Updater
 from .ytdlp import DownloadManager
@@ -58,6 +59,7 @@ def build_services(
     return handlers.Services(
         config=config,
         lang_store=open_store(data_dir / "langs.json", config.default_lang),
+        settings_store=SettingsStore(data_dir / "settings.json"),
         probe_spawner=RealProbeSpawner(),
         archive=archive,
         library=Library(data_dir),
