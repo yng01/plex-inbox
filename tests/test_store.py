@@ -2,7 +2,7 @@
 ledger and the on-disk file. A manually-deleted video is no longer "archived",
 so re-requesting it re-downloads instead of skipping (the user's report)."""
 
-from bot.store import Archive
+from bot.store import Archive, dedupe_key
 
 
 def test_contains_true_when_ledger_and_file_present(tmp_path):
@@ -61,3 +61,59 @@ def test_contains_handles_absolute_rel_path(tmp_path):
     assert a.contains("YouTube:abc")
     f.unlink()
     assert not a.contains("YouTube:abc")
+
+
+# --- mode-scoped slots + legacy-key migration ---------------------------------
+
+
+def test_dedupe_key_scopes_by_mode():
+    assert dedupe_key("YouTube", "abc123", False) == "YouTube:abc123:video"
+    assert dedupe_key("YouTube", "abc123", True) == "YouTube:abc123:audio"
+
+
+def test_video_and_audio_only_are_independent_slots(tmp_path):
+    a = Archive(tmp_path)
+    (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
+    video = tmp_path / "YouTube" / "Chan" / "abc.mkv"
+    audio = tmp_path / "YouTube" / "Chan" / "abc.m4a"
+    video.write_bytes(b"x" * 16)
+    audio.write_bytes(b"y" * 16)
+    a.add("YouTube:abc:video", "ali", "YouTube/Chan/abc.mkv")
+    a.add("YouTube:abc:audio", "ali", "YouTube/Chan/abc.m4a")
+    assert a.contains("YouTube:abc:video")
+    assert a.contains("YouTube:abc:audio")
+    # deleting one file un-archives only that mode
+    video.unlink()
+    assert not a.contains("YouTube:abc:video")
+    assert a.contains("YouTube:abc:audio")
+
+
+def test_legacy_bare_key_migrates_to_video_slot(tmp_path):
+    a = Archive(tmp_path)
+    rel = "YouTube/Chan/abc.mkv"
+    (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
+    (tmp_path / rel).write_bytes(b"x" * 16)
+    a.add("YouTube:abc", "ali", rel)  # pre-mode key, as older releases wrote it
+
+    # a fresh process (fresh cache) sees the suffixed key on disk
+    b = Archive(tmp_path)
+    assert b.contains("YouTube:abc:video")
+    assert not b.contains("YouTube:abc:audio")
+    assert not b.contains("YouTube:abc")
+    ledger = (tmp_path / "archive.txt").read_text(encoding="utf-8")
+    assert "YouTube:abc:video" in ledger
+    # migration is idempotent: reload again, still one entry
+    c = Archive(tmp_path)
+    assert len(c.entries()) == 1
+
+
+def test_legacy_bare_key_with_audio_file_migrates_to_audio_slot(tmp_path):
+    a = Archive(tmp_path)
+    rel = "YouTube/Chan/abc.m4a"
+    (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
+    (tmp_path / rel).write_bytes(b"x" * 16)
+    a.add("YouTube:abc", "ali", rel)
+
+    b = Archive(tmp_path)
+    assert b.contains("YouTube:abc:audio")
+    assert not b.contains("YouTube:abc:video")

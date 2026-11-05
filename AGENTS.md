@@ -81,6 +81,12 @@ bot-download cap no longer applies.
    the item is in `archive.txt` **and** its on-disk file (the path recorded at
    download time) still exists. A manually-deleted file is therefore re-downloadable.
    Keep the two in step: write the ledger entry only after the file is on disk.
+   **Keys are mode-scoped** (`store.dedupe_key(site, id, audio_only)`):
+   `<site>:<id>:video` for any video mode, `<site>:<id>:audio` for audio-only —
+   so the two modes of the same item can coexist and never block each other.
+   Never use a bare `site:id` key again; legacy bare entries are migrated to
+   `:video`/`:audio` (by file extension) in `Archive._reload` — keep that
+   migration idempotent.
 
 4. **id-based on-disk names.** Files land at
    `<DATA_DIR>/<site>/<channel>/<id>.<ext>` (id = YouTube video id, Telegram

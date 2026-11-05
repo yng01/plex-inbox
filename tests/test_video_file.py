@@ -188,7 +188,7 @@ async def test_on_video_archives_file_with_metadata(tmp_path, monkeypatch):
     assert f"<year>{year}</year>" in nfo
     assert "<tag>site:upload</tag>" in nfo
     ledger = (cfg.data_dir / "archive.txt").read_text(encoding="utf-8")
-    assert "Upload:uniq-777" in ledger
+    assert "Upload:uniq-777:video" in ledger
 
     # the user saw one message: "receiving…" then "queued" (single status msg)
     status = msg.last_reply
@@ -228,7 +228,7 @@ async def test_on_video_same_file_twice_is_noop(tmp_path, monkeypatch):
     msg1 = send("first.mkv", "uniq-777")
     await handlers.on_video(_update(msg1), ctx)
     await _run_to_completion(svc)
-    assert svc.archive.contains("Upload:uniq-777")
+    assert svc.archive.contains("Upload:uniq-777:video")
     assert msg1.video.get_file_calls == 1  # first send does the transfer
 
     # second send of the same file: deduped *before* any download, so the whole

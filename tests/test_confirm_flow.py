@@ -157,7 +157,7 @@ async def test_download_of_archived_item_reports_skip_and_closes(tmp_path):
     rel = "YouTube/Cool Channel/abc123.mkv"
     (cfg.data_dir / "YouTube" / "Cool Channel").mkdir(parents=True, exist_ok=True)
     (cfg.data_dir / rel).write_bytes(b"vid")
-    svc.archive.add("YouTube:abc123", "ali", rel)
+    svc.archive.add("YouTube:abc123:video", "ali", rel)
     ctx.user_data["pending"] = {"info": _video(), "page": 0}
     cq, upd = _callback("da")
 
@@ -166,6 +166,77 @@ async def test_download_of_archived_item_reports_skip_and_closes(tmp_path):
     assert svc.manager._jobs == {}
     assert cq.message.edits[-1] == t("en", "already_in_library")
     _assert_closed(cq.message)
+
+
+async def test_audio_only_archived_does_not_block_video_button(tmp_path):
+    """Regression: after fetching an item audio-only, a *video* button press
+    must still queue a real download — the two slots are independent."""
+    cfg, svc, ctx = make_env(tmp_path)
+    rel = "YouTube/Cool Channel/abc123.m4a"
+    (cfg.data_dir / "YouTube" / "Cool Channel").mkdir(parents=True, exist_ok=True)
+    (cfg.data_dir / rel).write_bytes(b"aud")
+    svc.archive.add("YouTube:abc123:audio", "ali", rel)
+    ctx.user_data["pending"] = {"info": _video(), "page": 0}
+    cq, upd = _callback("da")
+
+    await handlers.on_callback(upd, ctx)
+
+    job = next(iter(svc.manager._jobs.values()))
+    assert job.audio_mode == "all"
+    assert "already_in_library" not in cq.message.edits[-1]
+    _assert_closed(cq.message)
+
+
+async def test_video_archived_does_not_block_audio_only_button(tmp_path):
+    """Mirror of the above: an archived *video* must not hide the audio-only
+    option for the same item."""
+    cfg, svc, ctx = make_env(tmp_path)
+    rel = "YouTube/Cool Channel/abc123.mkv"
+    (cfg.data_dir / "YouTube" / "Cool Channel").mkdir(parents=True, exist_ok=True)
+    (cfg.data_dir / rel).write_bytes(b"vid")
+    svc.archive.add("YouTube:abc123:video", "ali", rel)
+    ctx.user_data["pending"] = {"info": _video(), "page": 0}
+    cq, upd = _callback("ao")
+
+    await handlers.on_callback(upd, ctx)
+
+    job = next(iter(svc.manager._jobs.values()))
+    assert job.audio_mode == "audio"
+    assert "already_in_library" not in cq.message.edits[-1]
+    _assert_closed(cq.message)
+
+
+async def test_confirm_screen_hides_modes_already_in_library(tmp_path):
+    """A mode that is already archived is not offered again: only the
+    still-missing mode(s) + Cancel remain on the confirm screen."""
+    cfg, svc, ctx = make_env(tmp_path)
+    rel = "YouTube/Cool Channel/abc123.m4a"
+    (cfg.data_dir / "YouTube" / "Cool Channel").mkdir(parents=True, exist_ok=True)
+    (cfg.data_dir / rel).write_bytes(b"aud")
+    svc.archive.add("YouTube:abc123:audio", "ali", rel)
+
+    status = FakeMessage(text="Fetching…")
+    upd = FakeUpdate(user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url"))
+    await handlers._render_confirm(upd, ctx, _video(), status_msg=status)
+
+    markup = status.edit_markups[-1]
+    buttons = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert "ao" not in buttons  # audio already archived -> button hidden
+    assert "da" in buttons  # video still missing -> offered
+    assert "c" in buttons
+
+
+async def test_confirm_screen_shows_all_buttons_when_library_empty(tmp_path):
+    cfg, svc, ctx = make_env(tmp_path)
+    status = FakeMessage(text="Fetching…")
+    upd = FakeUpdate(user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url"))
+    await handlers._render_confirm(upd, ctx, _video(), status_msg=status)
+
+    buttons = [b.callback_data for row in status.edit_markups[-1].inline_keyboard for b in row]
+    assert "da" in buttons
+    assert "db" in buttons
+    assert "ao" in buttons
+    assert "c" in buttons
 
 
 async def test_cancel_closes_keyboard(tmp_path):

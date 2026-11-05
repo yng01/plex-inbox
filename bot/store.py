@@ -1,9 +1,11 @@
 """Deduplication archive + library browsing + stats.
 
 ``archive.txt`` is the dedupe ledger (one line per downloaded item, keyed by
-``<site>:<id>``). The rich per-item record lives in the on-disk sidecar
-``<id>.info.json`` (written by ``plex.py``), which is the source of truth for the
-library browser and the stats views.
+``<site>:<id>:<mode>`` where ``<mode>`` is ``video`` or ``audio``). Video and
+audio-only downloads of the same item are independent entries — each can be
+skipped, removed and re-downloaded on its own. The rich per-item record lives in
+the on-disk sidecar ``<id>.info.json`` (written by ``plex.py``), which is the
+source of truth for the library browser and the stats views.
 """
 
 from __future__ import annotations
@@ -14,6 +16,22 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
+#: Extensions that mark an on-disk file as an *audio-only* download. Used to
+#: classify legacy ledger entries (pre-mode keys) during migration. Keep in
+#: sync with :data:`bot.ytdlp.AUDIO_EXTS`.
+_AUDIO_EXTS = {"m4a", "mp3", "opus", "ogg", "oga", "aac", "flac", "wma", "mka"}
+
+
+def dedupe_key(site: str, vid: str, audio_only: bool) -> str:
+    """Ledger key for one downloaded item, scoped to its download mode.
+
+    ``audio_only`` selects the ``:audio`` suffix; anything else (every video
+    mode) is ``:video``. This is what lets a re-requested video download
+    proceed after the same item was fetched audio-only (and vice versa).
+    """
+    suffix = "audio" if audio_only else "video"
+    return f"{site}:{vid}:{suffix}"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -21,7 +39,7 @@ def _now_iso() -> str:
 
 @dataclass
 class ArchiveEntry:
-    key: str  # "site:id"
+    key: str  # "site:id:video" | "site:id:audio"
     requestor: str
     ts: str
     rel_path: str
@@ -48,8 +66,31 @@ class Archive:
                     rel = parts[3].strip() if len(parts) > 3 else ""
                     if key:
                         entries[key] = ArchiveEntry(key, requestor, ts, rel)
-        self._cache = entries
-        return entries
+        # One-time migration: pre-mode entries used a bare ``site:id`` key, so
+        # an audio-only download claimed the video's slot (and vice versa).
+        # Rewrite them to mode-suffixed keys, inferring the mode from the
+        # recorded file's extension. Idempotent once every key is suffixed.
+        migrated: dict[str, ArchiveEntry] = {}
+        changed = False
+        for e in entries.values():
+            nk = self._migrate_key(e.key, e.rel_path)
+            if nk != e.key:
+                changed = True
+                e = ArchiveEntry(nk, e.requestor, e.ts, e.rel_path)
+            if nk not in migrated:
+                migrated[nk] = e
+        if changed:
+            self._flush(migrated)
+        self._cache = migrated
+        return migrated
+
+    @staticmethod
+    def _migrate_key(key: str, rel_path: str) -> str:
+        if key.endswith((":video", ":audio")):
+            return key
+        ext = Path(rel_path).suffix.lower().lstrip(".") if rel_path else ""
+        suffix = "audio" if ext in _AUDIO_EXTS else "video"
+        return f"{key}:{suffix}"
 
     def contains(self, key: str) -> bool:
         """True iff the item is in the ledger AND its file still exists on disk.

@@ -32,7 +32,7 @@ from . import plex, probe as probe_mod
 from .config import Config
 from .i18n import LanguageStore, t, user_display
 from .probe import Entry, ProbeError, UrlInfo
-from .store import Archive, Library, Stats
+from .store import Archive, Library, Stats, dedupe_key
 from .updater import Updater
 from .ytdlp import VIDEO_EXTS, DownloadManager, Job
 
@@ -175,6 +175,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await status.edit_text(L(context, update, "error_generic"))
         return
 
+    if not info.is_playlist and (
+        s.archive.contains(dedupe_key(info.site, info.id, False))
+        and s.archive.contains(dedupe_key(info.site, info.id, True))
+    ):
+        # the video *and* the audio-only version are already in the library —
+        # there is nothing left to offer, so close in place without a confirm
+        # screen (whose buttons would all just report "skipped")
+        await status.edit_text(L(context, update, "already_in_library"))
+        return
     context.user_data["pending"] = {"info": info, "page": 0}
     try:
         # edit the "🔎 Fetching…" status message *in place* into the confirm
@@ -241,6 +250,12 @@ async def _render_confirm(
         for i, e in enumerate(chunk):
             idx = start + i
             label = f"{idx + 1}. {e.title[:30]}"
+            if (
+                s.archive.contains(dedupe_key(info.site, e.id, False))
+                and s.archive.contains(dedupe_key(info.site, e.id, True))
+            ):
+                # both the video and the audio are already archived — mark it
+                label = f"✓ {label}"
             rows.append([InlineKeyboardButton(label, callback_data=f"e{idx}")])
         if pages > 1:
             nav = []
@@ -253,18 +268,24 @@ async def _render_confirm(
         rows.append([InlineKeyboardButton(t(lang, "btn_cancel"), callback_data="c")])
         markup = InlineKeyboardMarkup(rows)
     else:
+        # buttons for modes that are *not yet* in the library: an already-
+        # downloaded mode would just report "skipped", so hide it instead
+        video_done = s.archive.contains(dedupe_key(info.site, info.id, False))
+        audio_done = s.archive.contains(dedupe_key(info.site, info.id, True))
         rows = []
-        if s.config.multi_audio:
-            rows.append(
-                [
-                    InlineKeyboardButton(t(lang, "btn_download_all"), callback_data="da"),
-                    InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db"),
-                ]
-            )
-        else:
-            # single-track mode: original audio (the only option without MULTI_AUDIO)
-            rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
-        rows.append([InlineKeyboardButton(t(lang, "btn_audio_only"), callback_data="ao")])
+        if not video_done:
+            if s.config.multi_audio:
+                rows.append(
+                    [
+                        InlineKeyboardButton(t(lang, "btn_download_all"), callback_data="da"),
+                        InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db"),
+                    ]
+                )
+            else:
+                # single-track mode: original audio (the only option without MULTI_AUDIO)
+                rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
+        if not audio_done:
+            rows.append([InlineKeyboardButton(t(lang, "btn_audio_only"), callback_data="ao")])
         rows.append([InlineKeyboardButton(t(lang, "btn_cancel"), callback_data="c")])
         markup = InlineKeyboardMarkup(rows)
 
@@ -320,7 +341,9 @@ async def _add_job(
     the user sees one continuous message rather than two.
     """
     s = svc(context)
-    key = f"{info.site}:{info.id}"
+    # mode-scoped key: an audio-only download of this item (or of a sibling one)
+    # must not block the video, and vice versa
+    key = dedupe_key(info.site, info.id, audio_mode == "audio")
     if s.archive.contains(key):
         return None
     job = s.manager.enqueue(
@@ -563,7 +586,7 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # whole file — mirroring the URL flow, which dedupes right after the cheap probe
     # and before the expensive download.
     info = _video_info(video, req, lang)
-    if svc(context).archive.contains(f"{info.site}:{info.id}"):
+    if svc(context).archive.contains(dedupe_key(info.site, info.id, False)):
         await msg.reply_text(t(lang, "already_in_library"))
         return
     # immediate feedback; this message becomes the job's single status message

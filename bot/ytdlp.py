@@ -36,7 +36,7 @@ from . import plex
 from .config import Config
 from .i18n import t
 from .probe import AudioTrack, UrlInfo
-from .store import Archive
+from .store import Archive, dedupe_key
 
 VIDEO_EXTS = {"mkv", "mp4", "webm", "mov", "m4v", "flv", "avi", "ogv", "ts"}
 #: extensions an audio-only download (``-f ba``) can land in
@@ -96,7 +96,7 @@ class Job:
     @property
     def dedupe_key(self) -> str:
         vid = self.info.id if self.info else ""
-        return f"{self.site}:{vid}"
+        return dedupe_key(self.site, vid, self.audio_mode == "audio")
 
 
 # --- process interfaces ------------------------------------------------------
@@ -932,7 +932,7 @@ class DownloadManager:
             )
 
         self.archive.add(
-            f"{job.site}:{info.id if info else job.id}",
+            dedupe_key(job.site, info.id if info else job.id, job.audio_mode == "audio"),
             job.requestor,
             rel,
         )

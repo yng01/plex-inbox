@@ -174,9 +174,14 @@ def test_enqueue_builds_target_path_and_job_fields(tmp_path):
     assert job.base == "abc123"  # on-disk name is the item id, not the title
     assert job.target_dir == cfg.data_dir / "YouTube" / "Cool Channel"
     assert job.target_dir.is_dir()
-    assert job.dedupe_key == "YouTube:abc123"
+    # dedupe keys are mode-scoped: a video download (any audio mode) claims
+    # the :video slot, an audio-only one claims the :audio slot — the two must
+    # never block each other
+    assert job.dedupe_key == "YouTube:abc123:video"
+    audio_job = mgr.enqueue(make_info(), requestor="ali", audio_mode="audio")
+    assert audio_job.dedupe_key == "YouTube:abc123:audio"
     assert mgr.get(job.id) is job
-    assert mgr.queue_length() == 1
+    assert mgr.queue_length() == 2
 
 
 def test_enqueue_sanitizes_site_channel_and_falls_back(tmp_path):
@@ -351,7 +356,7 @@ async def test_success_path_writes_full_metadata(tmp_path):
     assert [t["language"] for t in sc["audio_tracks"]] == ["en", "ar"]
     assert sc["genres"] == ["Documentary"]
 
-    assert archive.contains("YouTube:abc123")
+    assert archive.contains("YouTube:abc123:video")
     assert len(http.posts) == 1
     assert http.posts[0]["url"].endswith("/library/sections/refresh")
     assert http.posts[0]["headers"]["X-Plex-Token"] == "tok"
@@ -438,7 +443,9 @@ async def test_audio_mode_finalizes_audio_only_file(tmp_path):
     sc = json.loads((d / "abc123.info.json").read_text(encoding="utf-8"))
     assert sc["requestor"] == "user:999"
     assert sc["final_path"].endswith("abc123.m4a")
-    assert archive.contains("YouTube:abc123")
+    # audio-only downloads claim the :audio slot, not the video's
+    assert archive.contains("YouTube:abc123:audio")
+    assert not archive.contains("YouTube:abc123:video")
 
 
 async def test_poster_prefers_youtube_channel_avatar_over_thumbnail(tmp_path):
@@ -512,7 +519,7 @@ async def test_failed_job_reports_reason_and_removes_partials(tmp_path):
     assert not (d / "abc123.mkv").exists()
     assert not (d / "abc123.jpg").exists()
     assert not list(d.glob(".inflight-*.json"))
-    assert not archive.contains("YouTube:abc123")
+    assert not archive.contains("YouTube:abc123:video")
     assert bot.edits[-1][2].startswith("⚠️ Failed:")
 
 
@@ -637,7 +644,7 @@ async def test_telegram_edit_rejection_never_fails_the_job(tmp_path):
     assert job.state == "done"
     assert job.error == ""
     assert video.exists()
-    assert archive.contains("YouTube:abc123")
+    assert archive.contains("YouTube:abc123:video")
 
 
 # --- cancel: kill process, remove partials, keep foreign files --------------

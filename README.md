@@ -40,7 +40,10 @@ attributed to the person who requested it.
   the process and removes its partial files (thumbnail, NFO, journals) without
   touching other videos in the same folder.
 - **No duplicates** — a global `archive.txt` ledger means re-adding an already
-  archived video is skipped with “already in your library”.
+  archived video is skipped with “already in your library”. The ledger is
+  **mode-scoped** (`…:video` / `…:audio`), so the video and the audio-only
+  version of the same item are independent: you can have one without the other,
+  and downloading one never blocks the other.
 - **Auto-updates** — at startup and at most once every `UPDATE_CHECK_HOURS`, the bot
   compares the installed `yt-dlp` version against PyPI and upgrades in place when a
   newer release exists. Because each download spawns a fresh `yt-dlp` process, the new
@@ -140,12 +143,14 @@ Slash commands (`/add /queue /library /stats /lang /help`) are shortcuts to the 
 
 ```
 data/
-├── archive.txt                      # dedupe ledger: one line per archived video
+├── archive.txt                      # dedupe ledger: one line per archived item,
+│                                    #   key = <site>:<id>:video | <site>:<id>:audio
 ├── langs.json                       # per-user language preferences
 └── YouTube/
     └── Cool Channel/
         ├── poster.jpg               # channel avatar (once per channel)
         ├── jPjbMA0wvrI.mkv          # video, all audio streams embedded
+        ├── jPjbMA0wvrI.m4a          # audio-only (independent slot; coexists)
         ├── jPjbMA0wvrI.jpg          # thumbnail, stem matches the video
         ├── jPjbMA0wvrI.nfo          # Kodi/Plex metadata + tags (carries the title)
         └── jPjbMA0wvrI.info.json    # sidecar: requestor, date, path, size, audio tracks
