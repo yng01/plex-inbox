@@ -11,8 +11,8 @@ Nothing in the handlers hardcodes user-facing text — they all call :func:`t`.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 LANGS: tuple[str, ...] = ("en", "ar")
 FALLBACK_LANG = "en"
@@ -358,8 +358,8 @@ def t(lang: str | None, key: str, **kwargs) -> str:
     entry = STRINGS.get(key)
     if entry is None:
         raise KeyError(f"Unknown i18n key: {key!r}")
-    l = lang if lang in LANGS else FALLBACK_LANG
-    text = entry.get(l) or entry.get(FALLBACK_LANG) or ""
+    lang = lang if lang in LANGS else FALLBACK_LANG
+    text = entry.get(lang) or entry.get(FALLBACK_LANG) or ""
     if kwargs:
         text = text.format(**kwargs)
     return text

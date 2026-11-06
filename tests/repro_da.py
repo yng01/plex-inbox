@@ -11,16 +11,7 @@ import traceback
 sys.path.insert(0, "/work/tests")
 sys.path.insert(0, "/work")
 
-from bot import handlers  # noqa: E402
-from bot.config import load_config  # noqa: E402
-from bot.i18n import open_store  # noqa: E402
-from bot.probe import AudioTrack, UrlInfo  # noqa: E402
-from bot.settings import SettingsStore  # noqa: E402
-from bot.store import Archive, Library, Stats  # noqa: E402
-from bot.updater import Updater  # noqa: E402
-from bot.ytdlp import DownloadManager  # noqa: E402
-
-from fakes import (  # noqa: E402
+from fakes import (
     FakeCallbackQuery,
     FakeContext,
     FakeHttp,
@@ -29,6 +20,15 @@ from fakes import (  # noqa: E402
     FakeUser,
     RecordingSpawner,
 )
+
+from bot import handlers
+from bot.config import load_config
+from bot.i18n import open_store
+from bot.probe import UrlInfo
+from bot.settings import SettingsStore
+from bot.store import Archive, Library, Stats
+from bot.updater import Updater
+from bot.ytdlp import DownloadManager
 
 
 def build():
@@ -79,7 +79,7 @@ async def main() -> None:
     cq = FakeCallbackQuery(data="da")
     upd = FakeUpdate(
         user=FakeUser(id=111, username="tester"),
-        message=cq.message,  # update.effective_message, as PTB provides for callback updates
+        message=cq.message,  # PTB exposes this as update.effective_message
         callback_query=cq,
     )
 

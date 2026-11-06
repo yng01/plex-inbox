@@ -11,10 +11,10 @@ source of truth for the library browser and the stats views.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator
 
 #: Extensions that mark an on-disk file as an *audio-only* download. Used to
 #: classify legacy ledger entries (pre-mode keys) during migration. Keep in
@@ -34,7 +34,7 @@ def dedupe_key(site: str, vid: str, audio_only: bool) -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @dataclass
@@ -145,7 +145,7 @@ class Archive:
     def _flush(self, entries: dict[str, ArchiveEntry]) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         lines = [
-            "\t".join([e.key, e.requestor, e.ts, e.rel_path]) for e in entries.values()
+            f"{e.key}\t{e.requestor}\t{e.ts}\t{e.rel_path}" for e in entries.values()
         ]
         tmp = self.path.with_suffix(".txt.tmp")
         tmp.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")

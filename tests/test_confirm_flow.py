@@ -10,17 +10,6 @@ screen = editing the message with an *empty* ``InlineKeyboardMarkup``.
 
 import json
 
-from telegram import InlineKeyboardMarkup
-
-from bot import handlers
-from bot.config import load_config
-from bot.i18n import open_store, t
-from bot.settings import SettingsStore
-from bot.probe import Entry, UrlInfo
-from bot.store import Archive, Library, Stats
-from bot.updater import Updater
-from bot.ytdlp import DownloadManager
-
 from fakes import (
     FakeBot,
     FakeCallbackQuery,
@@ -32,6 +21,16 @@ from fakes import (
     FakeUser,
     RecordingSpawner,
 )
+from telegram import InlineKeyboardMarkup
+
+from bot import handlers
+from bot.config import load_config
+from bot.i18n import open_store, t
+from bot.probe import Entry, UrlInfo
+from bot.settings import SettingsStore
+from bot.store import Archive, Library, Stats
+from bot.updater import Updater
+from bot.ytdlp import DownloadManager
 
 DETAILS = "Title: Great Video\nSite: YouTube"
 

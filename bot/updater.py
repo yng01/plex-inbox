@@ -12,11 +12,13 @@ are injectable so tests can drive success / failure / disabled paths determinist
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import asdict, dataclass
+from datetime import UTC
 from pathlib import Path
-from typing import Awaitable, Callable, Sequence
 
 from .config import Config
 
@@ -118,12 +120,10 @@ class Updater:
         self.state = st
         if not self.state_path:
             return
-        try:
+        with contextlib.suppress(OSError):  # best-effort; in-memory state still works
             Path(self.state_path).write_text(
                 json.dumps(asdict(st), indent=2), encoding="utf-8"
             )
-        except OSError:
-            pass  # persistence is best-effort; in-memory state still works
 
     async def _run(self, cmd: Sequence[str]) -> tuple[int, str, str]:
         if self._runner is not None:
@@ -171,11 +171,9 @@ class Updater:
         return (rc == 0), detail
 
     async def check_and_maybe_upgrade(self) -> UpdateState:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        st = UpdateState(
-            checked_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        )
+        st = UpdateState(checked_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
         st.current = await self.current_version()
         st.latest = await self.latest_version()
         if not self.config.auto_update:

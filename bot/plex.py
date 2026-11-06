@@ -22,9 +22,9 @@ from __future__ import annotations
 import json
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 # Characters that are unsafe or awkward in filenames across common filesystems.
 _UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -48,11 +48,11 @@ def sanitize_filename(name: str, maxlen: int = 150) -> str:
     return s or "untitled"
 
 
-def format_duration(seconds: float | int | None) -> str:
+def format_duration(seconds: float | None) -> str:
     """Human duration like ``1h2m3s`` / ``3m33s`` / ``45s`` / ``0s``."""
     if not seconds or seconds <= 0:
         return "0s"
-    seconds = int(round(seconds))
+    seconds = round(seconds)
     h, rem = divmod(seconds, 3600)
     m, s = divmod(rem, 60)
     parts = []
@@ -94,14 +94,14 @@ def build_tags(
     langs = []
     seen = set()
     for lang in audio_langs:
-        l = _tag_value(lang)
-        if not l or l in seen:
+        tag = _tag_value(lang)
+        if not tag or tag in seen:
             continue
-        seen.add(l)
-        langs.append(l)
+        seen.add(tag)
+        langs.append(tag)
     if len(langs) > 1:  # omit for a single default track
-        for l in langs:
-            tags.append(f"audio:{l}")
+        for tag in langs:
+            tags.append(f"audio:{tag}")
 
     if year and 1000 <= int(year) <= 2999:
         tags.append(f"year:{int(year)}")

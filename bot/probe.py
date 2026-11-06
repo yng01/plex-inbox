@@ -9,10 +9,12 @@ can feed a canned yt-dlp process.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Protocol, Sequence
+from typing import Protocol
 
 DEFAULT_TIMEOUT = 60.0
 
@@ -33,7 +35,7 @@ class ProbeError(Exception):
 class Spawner(Protocol):
     """Minimal async subprocess surface used by :func:`run_probe`."""
 
-    async def run(self, cmd: Sequence[str]) -> "Proc": ...
+    async def run(self, cmd: Sequence[str]) -> Proc: ...
 
 
 class Proc(Protocol):
@@ -97,10 +99,8 @@ class _Proc:
         return await self._proc.communicate()
 
     def kill(self) -> None:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             self._proc.kill()
-        except ProcessLookupError:
-            pass
 
 
 class RealProbeSpawner:
@@ -122,7 +122,7 @@ def _clean(s: object) -> str:
 def extract_audio_tracks(formats: Sequence[dict] | None) -> list[AudioTrack]:
     """Collect the distinct audio-only tracks from a yt-dlp format list.
 
-    A track is any format that carries audio but no video (``vcodec`` == ``none``/empty).
+    A track is any format with audio but no video (``vcodec`` == ``none``/empty).
     We de-duplicate on ``(language, codec)`` and preserve first-seen order. Missing
     language/codec become ``"und"`` so the track list is always total.
     """
@@ -270,13 +270,17 @@ def parse_probe(raw: dict) -> UrlInfo:
 # --- error classification ---------------------------------------------------
 
 _PRIVATE_RE = re.compile(
-    r"private|sign in|log ?in|login|authentication|age.?restrict", re.I
+    r"private|sign in|log ?in|login|authentication|age.?restrict", re.IGNORECASE
 )
 _REGION_RE = re.compile(
-    r"region|geo.?restrict|not available in (your )?country|country", re.I
+    r"region|geo.?restrict|not available in (your )?country|country", re.IGNORECASE
 )
-_UNAVAILABLE_RE = re.compile(r"unavailable|does not (exist|support)|no video|404", re.I)
-_UNSUPPORTED_RE = re.compile(r"unsupported url|no extractor|unknown (url|type)", re.I)
+_UNAVAILABLE_RE = re.compile(
+    r"unavailable|does not (exist|support)|no video|404", re.IGNORECASE
+)
+_UNSUPPORTED_RE = re.compile(
+    r"unsupported url|no extractor|unknown (url|type)", re.IGNORECASE
+)
 
 
 def classify_probe_error(stderr: str, timed_out: bool) -> str:
@@ -326,7 +330,7 @@ async def run_probe(
             except asyncio.CancelledError:
                 proc.kill()
                 raise
-    except (TimeoutError, asyncio.TimeoutError):
+    except TimeoutError:
         timed_out = True
         stderr = b"timed out"
 

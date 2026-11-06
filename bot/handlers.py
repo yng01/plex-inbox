@@ -8,15 +8,15 @@ always rendered as a short, user-safe error — handlers never raise into the fr
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
 import shutil
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from telegram import (
     InlineKeyboardButton,
@@ -33,9 +33,8 @@ from telegram.ext import (
     filters,
 )
 
-log = logging.getLogger("plexinbox")
-
-from . import plex, probe as probe_mod
+from . import plex
+from . import probe as probe_mod
 from .config import Config
 from .i18n import LanguageStore, t, user_display
 from .probe import Entry, ProbeError, UrlInfo
@@ -44,7 +43,9 @@ from .store import Archive, Library, Stats, dedupe_key
 from .updater import Updater
 from .ytdlp import VIDEO_EXTS, DownloadManager, Job
 
-URL_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.I)
+log = logging.getLogger("plexinbox")
+
+URL_RE = re.compile(r"^\s*(https?://\S+)\s*$", re.IGNORECASE)
 
 # How long to wait for the Bot API to hand us an uploaded file. With a local Bot
 # API Server, getFile blocks until the *whole* file is on disk, so a large video
@@ -79,7 +80,7 @@ def lang_for(context: ContextTypes.DEFAULT_TYPE, update: Update) -> str:
     return svc(context).lang_store.get(user_id(update))
 
 
-def L(context: ContextTypes.DEFAULT_TYPE, update: Update, key: str, **kw) -> str:
+def l10n(context: ContextTypes.DEFAULT_TYPE, update: Update, key: str, **kw) -> str:
     return t(lang_for(context, update), key, **kw)
 
 
@@ -96,7 +97,7 @@ def allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if s.config.debug_access:
         user = update.effective_user
         uname = f" (@{user.username})" if getattr(user, "username", None) else ""
-        msg = L(context, update, "debug_id", id=uid)
+        msg = l10n(context, update, "debug_id", id=uid)
         if uname:
             msg += uname
         if update.effective_message:
@@ -119,10 +120,8 @@ async def _answer(update: Update, text: str | None = None) -> None:
     cq = update.callback_query
     if cq is None:
         return
-    try:
+    with contextlib.suppress(Exception):
         await cq.answer(text=text)
-    except Exception:
-        pass
 
 
 # --- main menu --------------------------------------------------------------
@@ -192,7 +191,7 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if stored is not None and context.chat_data.get("menu_rendered_lang") == lang:
         # The canonical menu already shows exactly this language's menu — confirm
         # without resending (see docstring).
-        note = L(context, update, "menu_here")
+        note = l10n(context, update, "menu_here")
         if update.callback_query is not None:
             await _answer(update, text=note)
         elif update.effective_message is not None:
@@ -268,7 +267,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     url = m.group(1)
     s = svc(context)
     # show "probing", then replace with the confirm screen (or an error)
-    status = await msg.reply_text(L(context, update, "probing"))
+    status = await msg.reply_text(l10n(context, update, "probing"))
     try:
         info = await probe_mod.run_probe(s.probe_spawner, url)
     except ProbeError as e:
@@ -279,10 +278,10 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "unavailable": "error_probe_unavailable",
             "timeout": "error_probe_timeout",
         }.get(e.code, "error_generic")
-        await status.edit_text(L(context, update, key))
+        await status.edit_text(l10n(context, update, key))
         return
     except Exception:
-        await status.edit_text(L(context, update, "error_generic"))
+        await status.edit_text(l10n(context, update, "error_generic"))
         return
 
     if not info.is_playlist and (
@@ -292,7 +291,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # the video *and* the audio-only version are already in the library —
         # there is nothing left to offer, so close in place without a confirm
         # screen (whose buttons would all just report "skipped")
-        await status.edit_text(L(context, update, "already_in_library"))
+        await status.edit_text(l10n(context, update, "already_in_library"))
         return
 
     settings = s.settings_store.get(user_id(update))
@@ -325,7 +324,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 quality=settings.quality,
             )
             if job is None:  # already archived (pre-check race)
-                await status.edit_text(L(context, update, "already_in_library"))
+                await status.edit_text(l10n(context, update, "already_in_library"))
         return
 
     # "ask me every time" (the default): the confirm screen, pre-filled with the
@@ -340,7 +339,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # screen (never send a second message and leave the status dangling)
         await _render_confirm(update, context, info, status_msg=status)
     except Exception:
-        await status.edit_text(L(context, update, "error_generic"))
+        await status.edit_text(l10n(context, update, "error_generic"))
 
 
 def _audio_label(s: Services, lang: str, info: UrlInfo) -> str:
@@ -484,7 +483,7 @@ async def _render_confirm(
                     ]
                 )
             else:
-                # single-track mode: original audio (the only option without MULTI_AUDIO)
+                # single-track mode: original audio only (no MULTI_AUDIO)
                 rows.append(
                     [
                         InlineKeyboardButton(
@@ -589,7 +588,7 @@ async def _enqueue(
     entry_idx: int | None = None,
     status_msg: object | None = None,
 ) -> None:
-    s = svc(context)
+    svc(context)
     pending = context.user_data.get("pending") or {}
     base_info: UrlInfo = pending["info"]
     quality = pending.get("quality")
@@ -664,9 +663,9 @@ async def _enqueue(
 
 async def _reply(update, context, key: str, **kw) -> None:
     if update.callback_query:
-        await update.callback_query.edit_message_text(L(context, update, key, **kw))
+        await update.callback_query.edit_message_text(l10n(context, update, key, **kw))
     elif update.effective_message:
-        await update.effective_message.reply_text(L(context, update, key, **kw))
+        await update.effective_message.reply_text(l10n(context, update, key, **kw))
 
 
 async def _close_confirm(
@@ -686,10 +685,10 @@ async def _close_confirm(
     """
     cq = update.callback_query
     if cq and cq.message:
-        text = L(context, update, key, **kw) if key else (cq.message.text or "")
+        text = l10n(context, update, key, **kw) if key else (cq.message.text or "")
         await cq.message.edit_text(text, reply_markup=InlineKeyboardMarkup([]))
     elif status_msg is not None and key is not None:
-        await status_msg.edit_text(L(context, update, key, **kw))
+        await status_msg.edit_text(l10n(context, update, key, **kw))
 
 
 # --- video files (sent to the bot) ------------------------------------------
@@ -721,7 +720,7 @@ def _ext_for(video) -> str:
     return "mp4"
 
 
-class VideoTooBig(Exception):
+class VideoTooBigError(Exception):
     """Telegram rejected the file — the standard Bot API caps bot downloads at 20 MB."""
 
 
@@ -736,14 +735,14 @@ async def _download_video_file(context, video) -> Path | None:
     local Bot API Server is configured, ``get_file`` blocks until the file is on disk
     (hence the long timeout) and ``download_to_drive`` is then a plain local copy;
     otherwise PTB streams the bytes from the Bot API (20 MB cap — surfaced as
-    :class:`VideoTooBig` with a friendlier message).
+    :class:`VideoTooBigError` with a friendlier message).
     """
     try:
         tgfile = await video.get_file(read_timeout=FILE_FETCH_TIMEOUT)
     except Exception as exc:
         log.warning("video get_file failed: %s", exc)
         if _is_too_big(exc):
-            raise VideoTooBig() from exc
+            raise VideoTooBigError() from exc
         return None
     tmpdir = Path(tempfile.mkdtemp(prefix="plexinbox-up-"))
     dest = tmpdir / f"upload.{_ext_for(video)}"
@@ -755,7 +754,7 @@ async def _download_video_file(context, video) -> Path | None:
         log.warning("video download failed: %s", exc)
         shutil.rmtree(tmpdir, ignore_errors=True)
         if _is_too_big(exc):
-            raise VideoTooBig() from exc
+            raise VideoTooBigError() from exc
         return None
     out = Path(result) if result else dest
     if not out.is_file():
@@ -785,7 +784,7 @@ def _video_info(video, req: str, lang: str) -> UrlInfo:
         channel=req,
         duration=getattr(video, "duration", None),
         resolution=f"{width}x{height}" if (width and height) else None,
-        year=datetime.now(timezone.utc).year,
+        year=datetime.now(UTC).year,
         audio_tracks=[],
         is_playlist=False,
         raw={
@@ -844,7 +843,7 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status = await msg.reply_text(t(lang, "video_receiving"))
     try:
         tmp = await _download_video_file(context, video)
-    except VideoTooBig:
+    except VideoTooBigError:
         await status.edit_text(t(lang, "video_too_big"))
         return
     if tmp is None:
@@ -901,7 +900,7 @@ async def render_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         lines.append(_job_line(s, lang, job))
     context.user_data["job_codes"] = code_map
     rows = []
-    for i, job in enumerate(jobs):
+    for i, _job in enumerate(jobs):
         rows.append(
             [InlineKeyboardButton(t(lang, "job_cancel"), callback_data=f"cxj{i}")]
         )
@@ -1094,7 +1093,7 @@ async def render_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def render_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    s = svc(context)
+    svc(context)
     lang = lang_for(context, update)
     kb = InlineKeyboardMarkup(
         [
@@ -1336,7 +1335,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 log.warning("deleting %s failed: %s", sidecar, exc, exc_info=exc)
                 await _reply(update, context, "delete_failed")
                 return
-            await q.edit_message_text(L(context, update, "deleted_ok"))
+            await q.edit_message_text(l10n(context, update, "deleted_ok"))
             return
         if data == "dl_no":
             context.user_data.pop("del_sidecar", None)
@@ -1390,7 +1389,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _answer(update)
         try:
             if q and q.message:
-                await q.message.reply_text(L(context, update, "error_generic"))
+                await q.message.reply_text(l10n(context, update, "error_generic"))
         except Exception as exc2:
             log.warning("error reply after callback failure also failed: %s", exc2)
 

@@ -15,6 +15,7 @@ Shutdown (SIGTERM/SIGINT via PTB):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import sys
 from urllib.parse import urlparse
@@ -22,7 +23,8 @@ from urllib.parse import urlparse
 import httpx
 from telegram.ext import Application, ApplicationBuilder
 
-from . import handlers, ytdlp as ytdlp_mod
+from . import handlers
+from . import ytdlp as ytdlp_mod
 from .config import Config, load_config
 from .i18n import open_store
 from .probe import RealProbeSpawner
@@ -86,10 +88,8 @@ async def _updater_loop(svc: handlers.Services, stop: asyncio.Event) -> None:
             )
         except Exception as exc:  # an update failure must never stop the bot
             log.warning("update check failed: %s", exc)
-        try:
+        with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=interval)
-        except (TimeoutError, asyncio.TimeoutError):
-            pass
 
 
 async def _startup(config: Config, svc: handlers.Services) -> None:
@@ -185,7 +185,7 @@ def run(config: Config | None = None) -> None:
     if config.bot_api_base_file_url:
         builder = builder.base_file_url(config.bot_api_base_file_url)
     app = builder.build()
-    # handlers read services via context.bot_data["svc"]; wire it before the first update
+    # handlers read services via context.bot_data["svc"]; wire before the first update
     app.bot_data["svc"] = svc
     handlers.register(app, svc)
     # If we're proxying through a local Bot API Server, make sure it's listening
@@ -199,11 +199,9 @@ def cli() -> None:
         config = load_config()
     except Exception as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
-        raise SystemExit(2)
-    try:
+        raise SystemExit(2) from None
+    with contextlib.suppress(KeyboardInterrupt):
         run(config)
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

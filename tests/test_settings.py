@@ -16,11 +16,6 @@ Covers:
 import json
 
 import pytest
-
-from bot import handlers
-from bot.i18n import t
-from bot.settings import SettingsStore, UserSettings
-
 from fakes import (
     FakeMessage,
     FakeProbeSpawner,
@@ -35,6 +30,10 @@ from test_confirm_flow import (
     _video,
     make_env,
 )
+
+from bot import handlers
+from bot.i18n import t
+from bot.settings import SettingsStore, UserSettings
 
 UID = 111
 

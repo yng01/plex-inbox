@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from fakes import FakeProbeSpawner
 
 from bot.probe import (
     ProbeError,
@@ -9,7 +10,6 @@ from bot.probe import (
     parse_probe,
     run_probe,
 )
-from fakes import FakeProbeSpawner
 
 FORMATS = [
     {

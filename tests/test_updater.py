@@ -4,10 +4,10 @@ PyPI fetch are fakes.
 """
 
 import pytest
+from fakes import RecordingRunner
 
 from bot.config import load_config
 from bot.updater import Updater, is_newer, parse_version
-from fakes import RecordingRunner
 
 
 def make_config(tmp_path, **over):

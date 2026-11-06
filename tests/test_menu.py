@@ -10,13 +10,12 @@
   screen in either language.
 """
 
+from fakes import FakeCallbackQuery, FakeMessage, FakeUpdate, FakeUser
 from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
+from test_confirm_flow import make_env
 
 from bot import handlers
 from bot.i18n import t
-
-from fakes import FakeCallbackQuery, FakeMessage, FakeUpdate, FakeUser
-from test_confirm_flow import make_env
 
 
 def _text_update(text: str) -> FakeUpdate:

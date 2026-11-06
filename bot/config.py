@@ -9,9 +9,9 @@ misbehaving at runtime.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
 
 
 class ConfigError(Exception):
@@ -74,7 +74,8 @@ def parse_allowed_user_ids(value: str | None) -> tuple[bool, list[int]]:
             ids.append(int(part))
         except ValueError as exc:
             raise ConfigError(
-                f"ALLOWED_USER_IDS must be 'all' or comma-separated numeric IDs, got {part!r}"
+                "ALLOWED_USER_IDS must be 'all' or comma-separated numeric IDs, "
+                f"got {part!r}"
             ) from exc
     if not ids:
         raise ConfigError("ALLOWED_USER_IDS lists no valid user IDs")

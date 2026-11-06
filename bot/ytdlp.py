@@ -19,16 +19,17 @@ previously interrupted run left behind.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
 import shutil
 import time
 import uuid
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Awaitable, Callable, Sequence
 
 from telegram.error import BadRequest
 
@@ -153,10 +154,8 @@ class RealProc:
             yield raw.decode("utf-8", "replace").rstrip("\n")
 
     def kill(self) -> None:
-        try:
+        with contextlib.suppress(ProcessLookupError):
             self._proc.kill()
-        except ProcessLookupError:
-            pass
 
     async def wait(self) -> int:
         self.returncode = await self._proc.wait()
@@ -333,7 +332,7 @@ def update_progress(
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _remove(p: Path) -> bool:
@@ -349,7 +348,7 @@ def _remove(p: Path) -> bool:
 
 def _snapshot(d: Path) -> set[Path]:
     try:
-        return {p for p in d.iterdir()}
+        return set(d.iterdir())
     except OSError:
         return set()
 
@@ -372,10 +371,8 @@ def write_journal(job: Job) -> Path:
         "url": job.url,
         "started_at": _now_iso(),
     }
-    try:
+    with contextlib.suppress(OSError):
         p.write_text(json.dumps(payload), encoding="utf-8")
-    except OSError:
-        pass
     return p
 
 
@@ -416,7 +413,7 @@ def cleanup_leftovers(data_dir: str | Path) -> int:
     return removed
 
 
-def human_size(n: float | int) -> str:
+def human_size(n: float) -> str:
     n = float(n or 0)
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024:
@@ -523,7 +520,7 @@ class DownloadManager:
                 job.state = "cancelled"
                 await self._safe_notify(job, force=True)
         if self._workers:
-            done, pending = await asyncio.wait(list(self._workers), timeout=grace)
+            _done, pending = await asyncio.wait(list(self._workers), timeout=grace)
             for t in pending:
                 t.cancel()
             await asyncio.gather(*self._workers, return_exceptions=True)
@@ -541,7 +538,7 @@ class DownloadManager:
             else:
                 await asyncio.wait_for(_idle(), timeout)
             return True
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             return False
 
     # -- public API ----------------------------------------------------------
@@ -588,10 +585,8 @@ class DownloadManager:
             return False
         job.state = "cancelled"
         if job.proc is not None:
-            try:
+            with contextlib.suppress(Exception):
                 job.proc.kill()
-            except Exception:
-                pass
         await self._safe_notify(job, force=True)
         return True
 
@@ -690,9 +685,11 @@ class DownloadManager:
             "--progress-delta",
             "1",
             "--progress-template",
-            "download: PROG|%(progress._percent_str)s|%(progress._speed_str)s|"
-            "%(progress._eta_str)s|DL=%(progress.downloaded_bytes)s|"
-            "TOT=%(progress.total_bytes)s|EST=%(progress.total_bytes_estimate)s",
+            (
+                "download: PROG|%(progress._percent_str)s|%(progress._speed_str)s|"
+                "%(progress._eta_str)s|DL=%(progress.downloaded_bytes)s|"
+                "TOT=%(progress.total_bytes)s|EST=%(progress.total_bytes_estimate)s"
+            ),
             "--output",
             str(out),
             *fmt,
@@ -729,10 +726,8 @@ class DownloadManager:
                     job.speed, job.eta = speed, eta
                     await self._safe_notify(job)
                 elif job.state == "cancelled":
-                    try:
+                    with contextlib.suppress(Exception):
                         proc.kill()
-                    except Exception:
-                        pass
                     break
             rc = await proc.wait()
             if job.state == "cancelled":
@@ -742,10 +737,8 @@ class DownloadManager:
             if rc != 0:
                 job.state = "failed"
                 tail = ""
-                try:
+                with contextlib.suppress(Exception):
                     tail = (proc.stderr_tail or "").strip()
-                except Exception:
-                    pass
                 job.error = (tail or f"exit code {rc}")[:300]
                 self._cleanup(job, pre)
                 log.warning("job %s failed (rc=%s): %s", job.id, rc, job.error)
@@ -754,14 +747,10 @@ class DownloadManager:
             await self._finalize(job)
         except asyncio.CancelledError:
             if proc is not None:
-                try:
+                with contextlib.suppress(Exception):
                     proc.kill()
-                except Exception:
-                    pass
-                try:
+                with contextlib.suppress(Exception):
                     await asyncio.wait_for(proc.wait(), timeout=5)
-                except Exception:
-                    pass
             if job.state != "cancelled":
                 job.state = "cancelled"
                 # Worker task was cancelled (shutdown): cancel() hasn't spoken.
@@ -886,7 +875,7 @@ class DownloadManager:
         if not poster_url and info is not None and self.http is not None:
             raw = info.raw or {}
             cid = info.channel_id or raw.get("channel_id") or raw.get("uploader_id")
-            if cid and re.search(r"youtube\.", info.url or "", re.I):
+            if cid and re.search(r"youtube\.", info.url or "", re.IGNORECASE):
                 poster_url = await plex.resolve_youtube_avatar_url(self.http, cid)
         if not poster_url and info is not None:
             poster_url = plex.pick_poster_url(info)

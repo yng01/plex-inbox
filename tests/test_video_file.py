@@ -11,19 +11,7 @@ job.
 import asyncio
 import json
 import tempfile
-from datetime import datetime, timezone
-
-from telegram import File as TelegramFile
-from telegram.error import BadRequest
-
-from bot import handlers
-from bot.config import load_config
-from bot.i18n import open_store, t
-from bot.probe import UrlInfo
-from bot.settings import SettingsStore
-from bot.store import Archive, Library, Stats
-from bot.updater import Updater
-from bot.ytdlp import DownloadManager, human_size, real_ffprobe_audio
+from datetime import UTC, datetime
 
 from fakes import (
     FakeBot,
@@ -36,7 +24,17 @@ from fakes import (
     FakeVideoNote,
     RecordingSpawner,
 )
+from telegram import File as TelegramFile
+from telegram.error import BadRequest
 
+from bot import handlers
+from bot.config import load_config
+from bot.i18n import open_store, t
+from bot.probe import UrlInfo
+from bot.settings import SettingsStore
+from bot.store import Archive, Library, Stats
+from bot.updater import Updater
+from bot.ytdlp import DownloadManager, human_size, real_ffprobe_audio
 
 # --- shared env ---------------------------------------------------------------
 
@@ -160,7 +158,7 @@ async def test_on_video_archives_file_with_metadata(tmp_path, monkeypatch):
     assert spawner.commands == []
 
     # the file landed in <DATA_DIR>/Upload/<requestor>/ named after the file id
-    year = datetime.now(timezone.utc).year
+    year = datetime.now(UTC).year
     d = cfg.data_dir / "Upload" / "ali"
     final = d / "uniq-777.mkv"
     assert final.exists()

@@ -1,8 +1,9 @@
 import json
 import xml.etree.ElementTree as ET
 
-from bot import plex
 from fakes import FakeHttp
+
+from bot import plex
 
 
 def test_sanitize_filename():
@@ -118,13 +119,13 @@ def test_sidecar_roundtrip(tmp_path):
 
 
 def test_pick_poster_url_prefers_avatar():
-    class I:
+    class FakeInfo:
         raw = {
             "channel_favicon": "https://i/av.png",
             "thumbnail": "https://i/thumb.jpg",
         }
 
-    assert plex.pick_poster_url(I()) == "https://i/av.png"
+    assert plex.pick_poster_url(FakeInfo()) == "https://i/av.png"
 
     class J:
         raw = {"thumbnail": "https://i/thumb.jpg"}
@@ -143,10 +144,10 @@ def test_pick_avatar_url_no_thumbnail_fallback():
 
     assert plex.pick_avatar_url(J()) is None
 
-    class I:
+    class FakeInfo:
         raw = {"uploader_image": "https://i/av.png", "thumbnail": "https://i/t.jpg"}
 
-    assert plex.pick_avatar_url(I()) == "https://i/av.png"
+    assert plex.pick_avatar_url(FakeInfo()) == "https://i/av.png"
 
 
 async def test_resolve_youtube_avatar_url_og_image():

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from bot.i18n import STRINGS, LanguageStore, t, user_display
 
 
@@ -19,7 +21,7 @@ def test_all_known_keys_are_defined():
     # every t(...) key used anywhere must exist in STRINGS
     missing = set()
     for mod in (h, p, s, y):
-        src = open(mod.__file__, encoding="utf-8").read()
+        src = Path(mod.__file__).read_text(encoding="utf-8")
         import re
 
         for m in re.finditer(r'\bt\(\s*["\']([a-z0-9_]+)["\']', src):

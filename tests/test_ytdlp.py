@@ -10,12 +10,12 @@ import asyncio
 import json
 
 import pytest
+from fakes import FakeBot, FakeHttp, FakeLineProc, RecordingSpawner
+from telegram.error import BadRequest
 
 from bot.config import load_config
 from bot.probe import AudioTrack, UrlInfo
 from bot.store import Archive
-from telegram.error import BadRequest
-
 from bot.ytdlp import (
     DownloadManager,
     cleanup_leftovers,
@@ -24,8 +24,6 @@ from bot.ytdlp import (
     parse_progress,
     write_journal,
 )
-from fakes import FakeHttp, FakeLineProc, FakeBot, RecordingSpawner
-
 
 # --- fixtures ---------------------------------------------------------------
 
@@ -41,27 +39,27 @@ def make_config(tmp_path, **over):
 
 
 def make_info(**over):
-    base = dict(
-        id="abc123",
-        title="Great Video",
-        site="YouTube",
-        url="https://youtube.com/watch?v=abc123",
-        channel="Cool Channel",
-        duration=372.5,
-        resolution="1920x1080",
-        thumbnail="https://i.example/thumb.jpg",
-        description="A description " * 20,
-        year=2024,
-        genres=["Documentary"],
-        tags=["nature"],
-        audio_tracks=[
+    base = {
+        "id": "abc123",
+        "title": "Great Video",
+        "site": "YouTube",
+        "url": "https://youtube.com/watch?v=abc123",
+        "channel": "Cool Channel",
+        "duration": 372.5,
+        "resolution": "1920x1080",
+        "thumbnail": "https://i.example/thumb.jpg",
+        "description": "A description " * 20,
+        "year": 2024,
+        "genres": ["Documentary"],
+        "tags": ["nature"],
+        "audio_tracks": [
             AudioTrack(language="en", codec="opus"),
             AudioTrack(language="ar", codec="opus"),
         ],
-        raw={
+        "raw": {
             "channel_favicon": "https://i.example/avatar.jpg",
         },
-    )
+    }
     base.update(over)
     return UrlInfo(**base)
 

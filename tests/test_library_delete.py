@@ -9,12 +9,12 @@ the flow.
 
 import json
 
+from fakes import FakeCallbackQuery, FakeMessage, FakeUpdate, FakeUser
+from test_confirm_flow import make_env
+
 from bot import handlers
 from bot.i18n import t
 from bot.store import dedupe_key
-
-from fakes import FakeCallbackQuery, FakeMessage, FakeUpdate, FakeUser
-from test_confirm_flow import make_env
 
 
 def _mk_item(tmp_path, vid="abc123", title="Great Video"):
@@ -134,7 +134,7 @@ async def test_delete_no_cancels_and_keeps_the_item(tmp_path):
     assert "deleted_ok" not in "".join(msg.edits)
     # back on the file list (the 🗑 button is offered again)
     assert "Great Video" in msg.edits[-1]
-    assert f"🗑 Great Video" in _button_labels(msg)
+    assert "🗑 Great Video" in _button_labels(msg)
 
 
 async def test_stale_dl_yes_without_target_is_harmless(tmp_path):

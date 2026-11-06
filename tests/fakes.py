@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 # --- ytdlp manager (``lines()``-style process) -------------------------------
 
 
@@ -151,7 +150,7 @@ class FakeMessage:
         self.edits: list[str] = []
         # the ``reply_markup`` kwarg of each edit (``None`` = kept the old one)
         self.edit_markups: list[object | None] = []
-        self.last_reply: "FakeMessage | None" = None
+        self.last_reply: FakeMessage | None = None
         # the keyboard currently attached to this message
         self.keyboard: object | None = keyboard
 

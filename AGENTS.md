@@ -33,9 +33,10 @@ a JSON sidecar, all audio tracks embedded, and dedupe so nothing downloads twice
 | `bot/updater.py` | Optional auto-upgrade of yt-dlp from PyPI. |
 | `tests/` | pytest suite (network-free, token-free) + `fakes.py` (FakeBot/FakeHttp/RecordingSpawner/FakeLineProc/FakeVideo/…). |
 | `conftest.py` | Makes the repo root importable (`import bot`) without installing. |
+| `ruff.toml` | Canonical lint/format rule set (also mirrored to `~/.config/ruff/ruff.toml`). |
 | `Dockerfile` | One self-contained image: Python 3.12 + ffmpeg + yt-dlp + PTB. |
 | `docker-compose.yml` | `bot`, `bot-api` (profile `local-api`), `test` services. |
-| `.github/workflows/docker.yml` | CI: run tests, then build + push multi-arch image to GHCR. |
+| `.github/workflows/docker.yml` | CI: ruff check + format check, run tests, then build + push multi-arch image to GHCR. |
 
 ## Running tests
 
@@ -51,6 +52,22 @@ docker compose run --rm --build test
 ```
 
 `pyproject.toml` sets `asyncio_mode = "auto"`, so async tests need no decorator.
+
+## Linting
+
+`ruff.toml` at the repo root is the **canonical** rule set (line-length 88,
+target `py311`, an explicit curated `select` + documented `ignore`s). A copy
+also lives at `~/.config/ruff/ruff.toml` as a user-global fallback for other
+projects — keep the two in sync.
+
+```bash
+ruff check .            # lint (CI runs exactly this)
+ruff format --check .   # formatting (CI runs exactly this)
+ruff format .           # to apply formatting
+```
+
+CI pins `ruff==0.17.4` and gates the image build on `ruff check` +
+`ruff format --check`.
 
 ## Running the bot
 
@@ -138,5 +155,6 @@ bot-download cap no longer applies.
 
 1. Add/extend a test (offline, against the fakes) that pins the new behavior.
 2. If a new user-facing message is needed, add both `en` and `ar` in `bot/i18n.py`.
-3. Run `.venv/bin/python -m pytest -q` — the whole suite must pass before you stop.
-4. If the change touches the running bot, rebuild: `docker compose --profile local-api up -d --build bot`.
+3. Run `ruff check .` and `ruff format --check .` — both must be clean before you stop.
+4. Run `.venv/bin/python -m pytest -q` — the whole suite must pass before you stop.
+5. If the change touches the running bot, rebuild: `docker compose --profile local-api up -d --build bot`.
