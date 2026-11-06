@@ -71,5 +71,5 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ github.sha }}
             ${{ github.ref_type == 'tag' && format('ghcr.io/{0}:{1}', github.repository, github.ref_name) || '' }}
             ${{ github.ref_name == github.event.repository.default_branch && format('ghcr.io/{0}:latest', github.repository) || '' }}
-          cache-from: type=ghcr,scope=plex-inbox
-          cache-to: type=ghcr,mode=max,scope=plex-inbox
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
