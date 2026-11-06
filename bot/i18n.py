@@ -196,6 +196,24 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "no track info",
         "ar": "لا توجد معلومات",
     },
+    "delete_confirm": {
+        "en": "Delete this item from your library?\n{title}",
+        "ar": "حذف هذا العنصر من مكتبتك؟\n{title}",
+    },
+    "delete_yes": {"en": "🗑 Yes, delete", "ar": "🗑 نعم، احذف"},
+    "delete_no": {"en": "⬆️ Cancel", "ar": "⬆️ إلغاء"},
+    "deleted_ok": {
+        "en": "✅ Deleted. It's also off the dedupe ledger — send the link again any time to re-download it.",
+        "ar": "✅ تم الحذف وإزالته من سجل التكرار — أرسل الرابط مجدداً في أي وقت لإعادة التحميل.",
+    },
+    "delete_failed": {
+        "en": "⚠️ Deletion failed — nothing was removed. Check the bot logs.",
+        "ar": "⚠️ فشل الحذف — لم يُحذف أي شيء. راجع سجلات البوت.",
+    },
+    "delete_nothing": {
+        "en": "Nothing to delete right now — open the Library and pick an item.",
+        "ar": "لا يوجد ما يحذف الآن — افتح المكتبة واختر عنصراً.",
+    },
 
     # --- Stats ---
     "stats_title": {"en": "📊 Stats", "ar": "📊 الإحصائيات"},

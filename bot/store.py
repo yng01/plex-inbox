@@ -123,6 +123,23 @@ class Archive:
         self._cache = entries
         self._flush(entries)
 
+    def remove_item(self, site: str, vid: str) -> int:
+        """Remove every ledger entry for one item — both the ``:video`` and the
+        ``:audio`` slot — used by the library delete flow. Once the item's files
+        are gone its slots must be free, so a re-request starts a fresh download
+        (a manually-deleted file is re-downloadable). Returns how many entries
+        were removed (0 when the item had no ledger entry).
+        """
+        entries = self._reload()
+        removed = 0
+        for audio_only in (False, True):
+            if entries.pop(dedupe_key(site, vid, audio_only), None) is not None:
+                removed += 1
+        if removed:
+            self._cache = entries
+            self._flush(entries)
+        return removed
+
     def _flush(self, entries: dict[str, ArchiveEntry]) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         lines = [
@@ -148,6 +165,7 @@ class LibraryFile:
     audio: list[str]  # language codes, may be empty
     requestor: str
     year: int | None
+    sidecar: Path  # <data>/<site>/<channel>/<id>.info.json — the item on disk
 
 
 class Library:
@@ -198,6 +216,7 @@ class Library:
                     audio=audio,
                     requestor=str(d.get("requestor") or ""),
                     year=d.get("year"),
+                    sidecar=p,
                 )
             )
         out.sort(key=lambda f: (f.site.lower(), f.channel.lower(), f.name.lower()))

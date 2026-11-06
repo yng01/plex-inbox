@@ -117,3 +117,25 @@ def test_legacy_bare_key_with_audio_file_migrates_to_audio_slot(tmp_path):
     b = Archive(tmp_path)
     assert b.contains("YouTube:abc:audio")
     assert not b.contains("YouTube:abc:video")
+
+
+def test_remove_item_clears_both_mode_slots(tmp_path):
+    a = Archive(tmp_path)
+    (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
+    (tmp_path / "YouTube" / "Chan" / "abc.mkv").write_bytes(b"x" * 16)
+    (tmp_path / "YouTube" / "Chan" / "abc.m4a").write_bytes(b"y" * 16)
+    (tmp_path / "YouTube" / "Chan" / "other.mkv").write_bytes(b"z" * 16)
+    a.add(dedupe_key("YouTube", "abc", False), "ali", "YouTube/Chan/abc.mkv")
+    a.add(dedupe_key("YouTube", "abc", True), "ali", "YouTube/Chan/abc.m4a")
+    a.add(dedupe_key("YouTube", "other", False), "ali", "YouTube/Chan/other.mkv")
+
+    removed = a.remove_item("YouTube", "abc")
+
+    assert removed == 2
+    keys = {e.key for e in a.entries()}
+    assert "YouTube:abc:video" not in keys
+    assert "YouTube:abc:audio" not in keys
+    assert "YouTube:other:video" in keys  # other items are untouched
+    # idempotent: nothing left to remove for that item
+    assert a.remove_item("YouTube", "abc") == 0
+    assert a.remove_item("YouTube", "missing") == 0

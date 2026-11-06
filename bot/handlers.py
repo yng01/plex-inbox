@@ -8,6 +8,7 @@ always rendered as a short, user-safe error — handlers never raise into the fr
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -142,6 +143,10 @@ for _lang in ("en", "ar"):
     _MENU_LABELS[t(_lang, "menu_stats")] = "stats"
     _MENU_LABELS[t(_lang, "menu_lang")] = "lang"
     _MENU_LABELS[t(_lang, "menu_settings")] = "settings"
+    # the menu *title* itself is a tappable label too: sending/tapping "📺 Video
+    # Archive" (or its Arabic form) re-opens the menu instead of falling through
+    # to the add-URL flow and its "not a URL" reply
+    _MENU_LABELS[t(_lang, "menu_title")] = "menu"
 
 
 async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -215,6 +220,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await render_lang(update, context)
         elif action == "settings":
             await render_settings(update, context)
+        elif action == "menu":
+            await cmd_menu(update, context)
         return
     m = URL_RE.match(text)
     if not m:
@@ -842,15 +849,19 @@ async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ch = stack[1]
             files = s.library.files(site, ch)
             lines = [t(lang, "library_title"), t(lang, "library_site", site=site, n=1), t(lang, "library_channel", channel=ch, n=len(files))]
-            for f in files:
+            rows: list[list[InlineKeyboardButton]] = []
+            for i, f in enumerate(files):
                 audio = ",".join(f.audio) if f.audio else t(lang, "library_file_audio_none")
                 if len(f.audio) == 1:
                     audio = t(lang, "library_file_audio_single")
                 lines.append(t(lang, "library_file", name=f.name[:60], size=_size(f.size_bytes), date=f.date[:10] or "?", audio=audio))
-            rows = [
-                [InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")],
-                [InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")],
-            ]
+                # one 🗑 button per file -> confirm -> delete (files + ledger slot)
+                rows.append(
+                    [InlineKeyboardButton(f"🗑 {f.name[:36]}", callback_data=f"ld{i}")]
+                )
+            context.user_data["lib_files"] = [f.sidecar.as_posix() for f in files]
+            rows.append([InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")])
+            rows.append([InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")])
             markup = InlineKeyboardMarkup(rows)
 
     if update.callback_query:
@@ -865,6 +876,40 @@ def _size(n: int) -> str:
             return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
         n /= 1024
     return f"{n}B"
+
+
+async def _delete_item(s: Services, sidecar: Path) -> None:
+    """Delete one library item for good.
+
+    Removes every on-disk file that belongs to it — the media file (video or
+    audio), NFO, thumbnail, and the sidecar itself — plus the item's dedupe
+    ledger entry in BOTH modes, so the slot is free and the item can be
+    re-downloaded on request (a deleted file must not block re-download).
+    The channel poster (``poster.jpg``) is shared by all of a channel's items,
+    so it is kept. Plex is refreshed afterwards, best-effort.
+    """
+    d = sidecar.parent
+    # sidecars are written as <id>.info.json next to the media file, so the
+    # item id is the sidecar's name and the site is two levels up in the path
+    vid = sidecar.name[: -len(".info.json")]
+    base = Path(s.config.data_dir)
+    try:
+        rel = sidecar.relative_to(base)
+    except ValueError:
+        rel = Path(sidecar.name)
+    site = rel.parts[0] if len(rel.parts) >= 3 else ""
+    if d.is_dir():
+        for p in d.iterdir():
+            # the item's own files share its stem (media/.nfo/.jpg); the
+            # sidecar has stem "<id>.info" so it is matched explicitly
+            if p.is_file() and (p == sidecar or p.stem == vid):
+                try:
+                    p.unlink()
+                except OSError as exc:
+                    log.warning("could not delete %s: %s", p, exc)
+    s.archive.remove_item(site, vid)
+    if s.config.plex_enabled and s.http is not None:
+        await plex.refresh_plex(s.http, s.config.plex_url, s.config.plex_token)
 
 
 # --- stats -----------------------------------------------------------------
@@ -1092,6 +1137,61 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await render_library(update, context)
             return
 
+        # library delete: 🗑 on a file -> confirm screen -> delete
+        if data.startswith("ld") and data[2:].isdigit():
+            lang = lang_for(context, update)
+            files: list[str] = context.user_data.get("lib_files") or []
+            i = int(data[2:])
+            if i >= len(files):
+                await _reply(update, context, "delete_nothing")
+                return
+            sidecar = Path(files[i])
+            # the item's title, straight from its sidecar (falls back to the
+            # file's folder name if the sidecar is unreadable)
+            title = sidecar.parent.name
+            try:
+                rec = json.loads(sidecar.read_text(encoding="utf-8"))
+                if isinstance(rec, dict) and rec.get("title"):
+                    title = str(rec["title"])
+            except (OSError, ValueError):
+                pass
+            context.user_data["del_sidecar"] = sidecar.as_posix()
+            text = t(lang, "delete_confirm", title=title)
+            kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(t(lang, "delete_yes"), callback_data="dl_yes"),
+                        InlineKeyboardButton(t(lang, "delete_no"), callback_data="dl_no"),
+                    ],
+                    [InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")],
+                ]
+            )
+            await q.edit_message_text(text, reply_markup=kb)
+            return
+        if data == "dl_yes":
+            lang = lang_for(context, update)
+            sidecar_s = context.user_data.pop("del_sidecar", None)
+            if not sidecar_s:
+                await _reply(update, context, "delete_nothing")
+                return
+            sidecar = Path(sidecar_s)
+            try:
+                await _delete_item(s, sidecar)
+            except Exception as exc:
+                # never let one bad item take the flow down (invariant 2)
+                log.warning("deleting %s failed: %s", sidecar, exc, exc_info=exc)
+                await _reply(update, context, "delete_failed")
+                return
+            kb = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")]]
+            )
+            await q.edit_message_text(L(context, update, "deleted_ok"), reply_markup=kb)
+            return
+        if data == "dl_no":
+            context.user_data.pop("del_sidecar", None)
+            await render_library(update, context)
+            return
+
         # settings changes (each re-renders the settings screen in place)
         if data.startswith("sa_"):
             mode = data[3:]
@@ -1119,6 +1219,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if data in ("lang_en", "lang_ar"):
             code = data.split("_", 1)[1]
             s.lang_store.set(user_id(update), code)
+            # The persistent menu (canonical message + sticky reply-keyboard
+            # bar) must follow the new language, otherwise it keeps showing the
+            # old one — re-render it before confirming. cmd_menu edits the
+            # remembered menu message in place (reply->reply is a legal edit)
+            # and falls back to a fresh send when it is gone.
+            await cmd_menu(update, context)
             # confirm with the language's *display name*. Keep the kwarg off
             # t()'s own parameter names (``lang``/``key``) — passing ``lang=``
             # collided with the positional language argument (TypeError).

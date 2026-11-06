@@ -183,3 +183,90 @@ async def test_stored_id_on_an_inline_message_is_discarded_and_resent(tmp_path):
 
     assert ctx.chat_data["menu_msg_id"] == 2
     assert upd.effective_message.replies == [t("en", "menu_title")]
+
+
+async def test_menu_title_text_reopens_menu_both_languages(tmp_path):
+    """Live report: sending/tapping the menu title ("📺 Video Archive" /
+    "📺 أرشيف الفيديو") got no useful reply — it fell through the add-URL
+    flow to "not a URL". Both languages' titles are now routed to the menu."""
+    for lang in ("en", "ar"):
+        cfg, svc, ctx = make_env(tmp_path)
+        # the tapped label is in whatever language the menu was last rendered
+        # in — which is the user's own language. Set it, then tap the title.
+        svc.lang_store.set(111, lang)
+        upd = _text_update(t(lang, "menu_title"))
+        await handlers.on_text(upd, ctx)
+        assert t("en", "not_a_url") not in upd.effective_message.replies
+        assert t(lang, "menu_title") in upd.effective_message.replies
+        assert ctx.chat_data.get("menu_msg_id") is not None
+
+
+async def test_menu_title_repeat_edits_canonical_message(tmp_path):
+    """Tapping the title when the menu is already open must re-open it on the
+    SAME canonical message — never a duplicate menu message."""
+    cfg, svc, ctx = make_env(tmp_path)
+    await handlers.cmd_menu(_text_update("/menu"), ctx)
+    stored = ctx.chat_data["menu_msg_id"]
+
+    upd = _text_update(t("en", "menu_title"))
+    await handlers.on_text(upd, ctx)
+
+    assert ctx.chat_data["menu_msg_id"] == stored
+    assert ctx.bot.edits[-1][1] == stored
+    assert ctx.bot.edits[-1][2] == t("en", "menu_title")
+
+
+async def test_language_switch_re_renders_persistent_menu(tmp_path):
+    """Live report: after lang_ar the menu still showed English. The canonical
+    menu message AND the sticky reply-keyboard bar must follow the new
+    language — and switching back restores English again."""
+    cfg, svc, ctx = make_env(tmp_path)
+    await handlers.cmd_menu(_text_update("/menu"), ctx)
+    stored = ctx.chat_data["menu_msg_id"]
+
+    # open the language screen, then tap "العربية"
+    upd = _text_update(t("en", "menu_lang"))
+    await handlers.on_text(upd, ctx)
+    screen = upd.effective_message.last_reply
+    assert screen is not None
+    await handlers.on_callback(
+        FakeUpdate(
+            user=FakeUser(),
+            callback_query=FakeCallbackQuery(data="lang_ar", message=screen),
+        ),
+        ctx,
+    )
+
+    # the canonical menu message was re-rendered in Arabic — text AND the
+    # reply-keyboard bar (its labels are now the Arabic ones)
+    ar_edit = [e for e in ctx.bot.edits if e[1] == stored][-1]
+    assert ar_edit[2] == t("ar", "menu_title")
+    assert ar_edit[3] is not None
+    labels = [b.text for row in ar_edit[3].keyboard for b in row]
+    for key in (
+        "menu_add",
+        "menu_queue",
+        "menu_library",
+        "menu_stats",
+        "menu_lang",
+        "menu_settings",
+    ):
+        assert t("ar", key) in labels, f"{key} not re-rendered in Arabic"
+    # the confirmation itself is in the NEW language
+    assert t("ar", "lang_set", name=t("ar", "lang_ar")) in screen.edits
+    # still one canonical menu message
+    assert ctx.chat_data["menu_msg_id"] == stored
+
+    # switching back to English restores the EN menu (text + bar)
+    await handlers.on_callback(
+        FakeUpdate(
+            user=FakeUser(),
+            callback_query=FakeCallbackQuery(data="lang_en", message=screen),
+        ),
+        ctx,
+    )
+    en_edit = [e for e in ctx.bot.edits if e[1] == stored][-1]
+    assert en_edit[2] == t("en", "menu_title")
+    labels = [b.text for row in en_edit[3].keyboard for b in row]
+    assert t("en", "menu_add") in labels
+    assert t("ar", "menu_add") not in labels

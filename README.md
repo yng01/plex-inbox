@@ -51,6 +51,12 @@ attributed to the person who requested it.
   **mode-scoped** (`…:video` / `…:audio`), so the video and the audio-only
   version of the same item are independent: you can have one without the other,
   and downloading one never blocks the other.
+- **Delete from the bot** — the **📚 Library** → a channel's file list offers a 🗑
+  button on every file. Confirm, and the item is removed for good: media file, NFO,
+  thumbnail, and sidecar are deleted **and** its dedupe ledger entry (both the
+  `:video` and `:audio` slots) is cleared, so the slot is free and you can re-add
+  the link any time to download it again. The shared channel poster is kept, and a
+  Plex refresh fires afterwards when `PLEX_URL`/`PLEX_TOKEN` are set.
 - **Auto-updates** — at startup and at most once every `UPDATE_CHECK_HOURS`, the bot
   compares the installed `yt-dlp` version against PyPI and upgrades in place when a
   newer release exists. Because each download spawns a fresh `yt-dlp` process, the new
@@ -139,7 +145,9 @@ PAT, or set the registry credentials in `~/.docker/config.json`).
   no video) and **Cancel**. Playlist URLs additionally offer **Download all** and
   per-entry browsing.
 - **⏳ Queue** — see active and queued downloads; **Cancel** works on any of them.
-- **📚 Library** — browse site → channel → files (size, date, audio tracks), with paging.
+- **📚 Library** — browse site → channel → files (size, date, audio tracks). Every file
+  has a 🗑 button: tap it, confirm, and the item is deleted (files **and** its dedupe
+  ledger entry), so it can be re-downloaded later if you want it back.
 - **📊 Stats** — totals, per-site and per-requestor breakdowns, queue length, and the
   current `yt-dlp` version plus when it was last updated.
 - **🌐 Language** — pick English or Arabic (also `/lang`).
@@ -148,7 +156,8 @@ PAT, or set the registry credentials in `~/.docker/config.json`).
 The menu itself is a **persistent reply-keyboard button bar** pinned above the input
 box — always visible, no scrolling. Re-sending `/menu` (or tapping back-to-menu from
 any screen) updates the **same** menu message in place, so the chat never fills up
-with duplicate menus. Slash commands (`/add /queue /library /stats /lang`) are
+with duplicate menus. Tapping the menu's own title (📺 Video Archive / 📺 أرشيف
+الفيديو) re-opens the menu. Slash commands (`/add /queue /library /stats /lang`) are
 shortcuts to the same screens.
 
 ## Disk layout
