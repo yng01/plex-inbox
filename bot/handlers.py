@@ -830,7 +830,6 @@ async def render_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 )
             ]
         )
-    rows.append([InlineKeyboardButton(t(lang, "queue_menu"), callback_data="mmenu")])
     markup = InlineKeyboardMarkup(rows)
     if update.callback_query:
         await update.callback_query.edit_message_text("\n".join(lines), reply_markup=markup)
@@ -859,7 +858,6 @@ async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             lines.append(t(lang, "library_site", site=site, n=n))
             rows.append([InlineKeyboardButton(t(lang, "library_site", site=site, n=n), callback_data=f"lsc{code}")])
         context.user_data["lib_sites"] = code_map
-        rows.append([InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")])
         markup = InlineKeyboardMarkup(rows)
     else:
         site = stack[0]
@@ -876,7 +874,6 @@ async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 rows.append([InlineKeyboardButton(label, callback_data=f"lcc{code}")])
             context.user_data["lib_chans"] = code_map
             rows.append([InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")])
-            rows.append([InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")])
             markup = InlineKeyboardMarkup(rows)
         else:
             ch = stack[1]
@@ -894,7 +891,6 @@ async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
             context.user_data["lib_files"] = [f.sidecar.as_posix() for f in files]
             rows.append([InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")])
-            rows.append([InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")])
             markup = InlineKeyboardMarkup(rows)
 
     if update.callback_query:
@@ -993,7 +989,6 @@ async def render_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 InlineKeyboardButton(t(lang, "lang_en"), callback_data="lang_en"),
                 InlineKeyboardButton(t(lang, "lang_ar"), callback_data="lang_ar"),
             ],
-            [InlineKeyboardButton(t(lang, "menu_title"), callback_data="mmenu")],
         ]
     )
     text = t(lang, "lang_title")
@@ -1045,7 +1040,6 @@ async def render_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 callback_data="sauto",
             )
         ],
-        [InlineKeyboardButton(t(lang, "menu_title"), callback_data="mmenu")],
     ]
     markup = InlineKeyboardMarkup(rows)
     text = "\n".join(lines)
@@ -1201,7 +1195,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         InlineKeyboardButton(t(lang, "delete_yes"), callback_data="dl_yes"),
                         InlineKeyboardButton(t(lang, "delete_no"), callback_data="dl_no"),
                     ],
-                    [InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")],
                 ]
             )
             await q.edit_message_text(text, reply_markup=kb)
@@ -1220,10 +1213,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 log.warning("deleting %s failed: %s", sidecar, exc, exc_info=exc)
                 await _reply(update, context, "delete_failed")
                 return
-            kb = InlineKeyboardMarkup(
-                [[InlineKeyboardButton(t(lang, "library_menu"), callback_data="lmenu")]]
-            )
-            await q.edit_message_text(L(context, update, "deleted_ok"), reply_markup=kb)
+            await q.edit_message_text(L(context, update, "deleted_ok"))
             return
         if data == "dl_no":
             context.user_data.pop("del_sidecar", None)

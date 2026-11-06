@@ -195,7 +195,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "ar": "• {name}\n  {size}  ·  {date}  ·  🎵 {audio}",
     },
     "library_back": {"en": "⬆️ Up", "ar": "⬆️ أعلى"},
-    "library_menu": {"en": "🏠 Menu", "ar": "🏠 القائمة"},
     "library_file_audio_single": {
         "en": "1 track",
         "ar": "مسار واحد",

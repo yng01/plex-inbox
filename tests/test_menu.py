@@ -97,11 +97,14 @@ async def test_back_to_menu_tap_confirms_when_menu_already_open(tmp_path):
 
 
 async def test_mmenu_tap_from_every_sub_screen_confirms(tmp_path):
-    """The "📺 Video Archive" (mmenu) button lives on the Queue, Language and
-    Settings sub-screens. Tapping it while the sticky menu bar is already up
-    must confirm on every one of them — never a refused in-place edit, a
-    duplicate menu message, or a silently-spinning callback (the reported
-    "clicking Video Archive, no reply")."""
+    """Back-to-menu (mmenu) callbacks still resolve to the sticky menu. The
+    inline "📺 Video Archive" button no longer ships on the Queue, Language and
+    Settings sub-screens (the always-visible reply-keyboard bar is the reliable
+    way back), so this pins the guarantee for any lingering mmenu tap — e.g. a
+    message rendered before the button was removed: it must confirm on every
+    sub-screen, never a refused in-place edit, a duplicate menu message, or a
+    silently-spinning callback (the reported "clicking Video Archive, no
+    reply")."""
     for label_key in ("menu_queue", "menu_lang", "menu_settings"):
         cfg, svc, ctx = make_env(tmp_path)
         # the menu bar is already open, in the user's language
