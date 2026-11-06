@@ -48,7 +48,9 @@ def test_wait_no_base_url_returns_immediately():
 def test_wait_reachable_port_returns_quickly():
     srv, port = _start_listener()
     try:
-        c = load_config({**BASE, "TELEGRAM_BOT_API_BASE_URL": f"http://127.0.0.1:{port}"})
+        c = load_config(
+            {**BASE, "TELEGRAM_BOT_API_BASE_URL": f"http://127.0.0.1:{port}"}
+        )
         t0 = time.monotonic()
         asyncio.run(bot_main._wait_for_bot_api(c, timeout=5.0))
         assert time.monotonic() - t0 < 2.0  # connected on the first attempt

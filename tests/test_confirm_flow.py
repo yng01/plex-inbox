@@ -47,7 +47,9 @@ def make_env(tmp_path):
     archive = Archive(cfg.data_dir)
     spawner = RecordingSpawner()
     http = FakeHttp()
-    manager = DownloadManager(cfg, archive, spawner=spawner, http=http, notify_interval=0.01)
+    manager = DownloadManager(
+        cfg, archive, spawner=spawner, http=http, notify_interval=0.01
+    )
     svc = handlers.Services(
         config=cfg,
         lang_store=open_store(str(tmp_path / "langs.json"), "en"),
@@ -80,7 +82,12 @@ def _video() -> UrlInfo:
 
 def _playlist() -> UrlInfo:
     entries = [
-        Entry(id=f"ep{i}", title=f"Episode {i}", url=f"https://site/ep{i}", channel="Cool Channel")
+        Entry(
+            id=f"ep{i}",
+            title=f"Episode {i}",
+            url=f"https://site/ep{i}",
+            channel="Cool Channel",
+        )
         for i in range(3)
     ]
     return UrlInfo(
@@ -218,7 +225,9 @@ async def test_confirm_screen_hides_modes_already_in_library(tmp_path):
     svc.archive.add("YouTube:abc123:audio", "ali", rel)
 
     status = FakeMessage(text="Fetching…")
-    upd = FakeUpdate(user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url"))
+    upd = FakeUpdate(
+        user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url")
+    )
     await handlers._render_confirm(upd, ctx, _video(), status_msg=status)
 
     markup = status.edit_markups[-1]
@@ -231,10 +240,14 @@ async def test_confirm_screen_hides_modes_already_in_library(tmp_path):
 async def test_confirm_screen_shows_all_buttons_when_library_empty(tmp_path):
     cfg, svc, ctx = make_env(tmp_path)
     status = FakeMessage(text="Fetching…")
-    upd = FakeUpdate(user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url"))
+    upd = FakeUpdate(
+        user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url")
+    )
     await handlers._render_confirm(upd, ctx, _video(), status_msg=status)
 
-    buttons = [b.callback_data for row in status.edit_markups[-1].inline_keyboard for b in row]
+    buttons = [
+        b.callback_data for row in status.edit_markups[-1].inline_keyboard for b in row
+    ]
     assert "da" in buttons
     assert "db" in buttons
     assert "ao" in buttons

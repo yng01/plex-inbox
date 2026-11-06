@@ -25,9 +25,12 @@ def test_all_known_keys_are_defined():
         for m in re.finditer(r'\bt\(\s*["\']([a-z0-9_]+)["\']', src):
             if m.group(1) not in STRINGS:
                 missing.add(m.group(1))
-        for m in re.finditer(r'["\']([a-z0-9_]+)["\'],\s*(?:pos|n|m|pct|speed|eta|title|reason|path|size|tracks|site|channel|who|v|t=|lang=|label=)', src):
+        for m in re.finditer(
+            r'["\']([a-z0-9_]+)["\'],\s*(?:pos|n|m|pct|speed|eta|title|reason|path|size|tracks|site|channel|who|v|t=|lang=|label=)',
+            src,
+        ):
             # `or "fallback"` is not an i18n key — e.g. ``info.site or "unknown"``
-            if src[max(0, m.start() - 3):m.start()].endswith("or "):
+            if src[max(0, m.start() - 3) : m.start()].endswith("or "):
                 continue
             if m.group(1) not in STRINGS:
                 missing.add(m.group(1))

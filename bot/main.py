@@ -95,9 +95,7 @@ async def _updater_loop(svc: handlers.Services, stop: asyncio.Event) -> None:
 async def _startup(config: Config, svc: handlers.Services) -> None:
     removed = ytdlp_mod.cleanup_leftovers(config.data_dir)
     if removed:
-        log.info(
-            "removed %d leftover file(s) from a previous interrupted run", removed
-        )
+        log.info("removed %d leftover file(s) from a previous interrupted run", removed)
     try:
         st = await svc.updater.check_and_maybe_upgrade()
         if st.upgraded:

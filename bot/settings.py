@@ -55,9 +55,13 @@ class SettingsStore:
         default_quality: int | None = None,
     ):
         self.path = Path(path)
-        self.default_mode = default_mode if default_mode in AUDIO_MODES else _DEFAULT_MODE
+        self.default_mode = (
+            default_mode if default_mode in AUDIO_MODES else _DEFAULT_MODE
+        )
         self.default_quality = (
-            default_quality if default_quality in QUALITIES or default_quality is None else None
+            default_quality
+            if default_quality in QUALITIES or default_quality is None
+            else None
         )
         self._data: dict[str, dict] = {}
         self._load()

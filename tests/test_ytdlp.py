@@ -162,9 +162,7 @@ def test_parse_progress_na_becomes_empty_and_estimate_is_used():
 
 
 def test_parse_progress_ignores_plain_ytdlp_lines():
-    assert (
-        parse_progress("[download]  45.0% of 10.00MiB at 1.2MiB/s ETA 00:10") is None
-    )
+    assert parse_progress("[download]  45.0% of 10.00MiB at 1.2MiB/s ETA 00:10") is None
     assert parse_progress("[download] Destination: /data/x.mkv") is None
     assert parse_progress("") is None
 
@@ -312,15 +310,11 @@ def _wire(job, bot):
 
 
 async def test_success_path_writes_full_metadata(tmp_path):
-    cfg = make_config(
-        tmp_path, PLEX_URL="http://plex:32400", PLEX_TOKEN="tok"
-    )
+    cfg = make_config(tmp_path, PLEX_URL="http://plex:32400", PLEX_TOKEN="tok")
     archive = Archive(cfg.data_dir)
     spawner = RecordingSpawner()
     http = FakeHttp()
-    mgr = DownloadManager(
-        cfg, archive, spawner=spawner, http=http, notify_interval=0
-    )
+    mgr = DownloadManager(cfg, archive, spawner=spawner, http=http, notify_interval=0)
 
     base_dir = cfg.data_dir / "YouTube" / "Cool Channel"
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -359,8 +353,8 @@ async def test_success_path_writes_full_metadata(tmp_path):
 
     d = base_dir
     assert video.exists()
-    assert (d / "abc123.jpg").exists()          # thumbnail, stem matches the id
-    assert (d / "poster.jpg").exists()          # channel poster
+    assert (d / "abc123.jpg").exists()  # thumbnail, stem matches the id
+    assert (d / "poster.jpg").exists()  # channel poster
     nfo = (d / "abc123.nfo").read_text(encoding="utf-8")
     assert "<title>Great Video</title>" in nfo
     assert "<year>2024</year>" in nfo
@@ -779,9 +773,7 @@ async def test_cancel_of_finished_job_is_rejected(tmp_path):
     spawner = RecordingSpawner()
     d = cfg.data_dir / "YouTube" / "Cool Channel"
     d.mkdir(parents=True, exist_ok=True)
-    spawner.push(
-        FakeLineProc(on_finish=lambda: (d / "abc123.mkv").write_bytes(b"z"))
-    )
+    spawner.push(FakeLineProc(on_finish=lambda: (d / "abc123.mkv").write_bytes(b"z")))
     mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=spawner, http=FakeHttp())
     job = mgr.enqueue(make_info(), requestor="ali", audio_mode="all")
     await mgr.start()
@@ -838,14 +830,8 @@ async def test_concurrency_cap_queues_excess(tmp_path):
 
     d = cfg.data_dir / "YouTube" / "Cool Channel"
     d.mkdir(parents=True, exist_ok=True)
-    spawner.push(
-        SlowProc(
-            on_finish=lambda: (d / "b1.mkv").write_bytes(b"1")
-        )
-    )
-    spawner.push(
-        FakeLineProc(on_finish=lambda: (d / "b2.mkv").write_bytes(b"2"))
-    )
+    spawner.push(SlowProc(on_finish=lambda: (d / "b1.mkv").write_bytes(b"1")))
+    spawner.push(FakeLineProc(on_finish=lambda: (d / "b2.mkv").write_bytes(b"2")))
     job1 = mgr.enqueue(make_info(id="b1"), requestor="ali", audio_mode="all")
     job2 = mgr.enqueue(
         make_info(id="b2", title="Second", channel="Cool Channel"),
@@ -947,8 +933,5 @@ def test_cleanup_leftovers_finds_nested_journals(tmp_path):
     d.mkdir(parents=True)
     (d / "ep1.mkv").write_bytes(b"x")
     (d / "ep1.nfo").write_text("<video/>", encoding="utf-8")
-    (d / ".inflight-1.json").write_text(
-        json.dumps({"base": "ep1"}), encoding="utf-8"
-    )
+    (d / ".inflight-1.json").write_text(json.dumps({"base": "ep1"}), encoding="utf-8")
     assert cleanup_leftovers(tmp_path) == 3
-

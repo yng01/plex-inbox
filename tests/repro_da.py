@@ -50,7 +50,9 @@ def build():
         archive=archive,
         library=Library(cfg.data_dir),
         stats=Stats(cfg.data_dir),
-        manager=DownloadManager(cfg, archive, spawner=spawner, http=FakeHttp(), notify_interval=0.01),
+        manager=DownloadManager(
+            cfg, archive, spawner=spawner, http=FakeHttp(), notify_interval=0.01
+        ),
         updater=Updater(cfg, state_path=f"{tmp}/upd.json"),
         http=FakeHttp(),
     )

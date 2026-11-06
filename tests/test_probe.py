@@ -12,7 +12,13 @@ from bot.probe import (
 from fakes import FakeProbeSpawner
 
 FORMATS = [
-    {"format_id": "1", "vcodec": "avc1", "acodec": "mp4a.40.2", "width": 1920, "height": 1080},
+    {
+        "format_id": "1",
+        "vcodec": "avc1",
+        "acodec": "mp4a.40.2",
+        "width": 1920,
+        "height": 1080,
+    },
     {"format_id": "2", "vcodec": "none", "acodec": "opus", "language": "en"},
     {"format_id": "3", "vcodec": "none", "acodec": "opus", "language": "ar"},
     {"format_id": "4", "vcodec": "none", "acodec": "opus", "language": "en"},  # dup
@@ -63,9 +69,18 @@ def test_parse_playlist():
         "channel": "The Show",
         "webpage_url": "https://youtube.com/playlist?list=pl1",
         "entries": [
-            {"id": "e1", "title": "Ep 1", "webpage_url": "https://youtube.com/watch?v=e1",
-             "uploader": "The Show", "duration": 600},
-            {"id": "e2", "title": "Ep 2", "webpage_url": "https://youtube.com/watch?v=e2"},
+            {
+                "id": "e1",
+                "title": "Ep 1",
+                "webpage_url": "https://youtube.com/watch?v=e1",
+                "uploader": "The Show",
+                "duration": 600,
+            },
+            {
+                "id": "e2",
+                "title": "Ep 2",
+                "webpage_url": "https://youtube.com/watch?v=e2",
+            },
         ],
     }
     info = parse_probe(raw)
@@ -102,7 +117,10 @@ def test_classify_probe_error(stderr, expected):
 
 
 def test_classify_timeout_wins():
-    assert classify_probe_error("ERROR: something totally unknown", timed_out=True) == "timeout"
+    assert (
+        classify_probe_error("ERROR: something totally unknown", timed_out=True)
+        == "timeout"
+    )
 
 
 async def test_run_probe_success():
@@ -113,7 +131,9 @@ async def test_run_probe_success():
 
 
 async def test_run_probe_error_classification():
-    sp = FakeProbeSpawner(stdout="", stderr="ERROR: This video is private", returncode=1)
+    sp = FakeProbeSpawner(
+        stdout="", stderr="ERROR: This video is private", returncode=1
+    )
     with pytest.raises(ProbeError) as exc:
         await run_probe(sp, "https://x/v")
     assert exc.value.code == "private"

@@ -127,6 +127,7 @@ async def _answer(update: Update, text: str | None = None) -> None:
 
 # --- main menu --------------------------------------------------------------
 
+
 def main_menu_reply_keyboard(lang: str) -> ReplyKeyboardMarkup:
     """The menu as a *reply keyboard* — a button bar that stays pinned above the
     input box. That makes the menu always visible (no scrolling back up to reach
@@ -136,7 +137,10 @@ def main_menu_reply_keyboard(lang: str) -> ReplyKeyboardMarkup:
     """
     kb = [
         [KeyboardButton(t(lang, "menu_add"))],
-        [KeyboardButton(t(lang, "menu_queue")), KeyboardButton(t(lang, "menu_library"))],
+        [
+            KeyboardButton(t(lang, "menu_queue")),
+            KeyboardButton(t(lang, "menu_library")),
+        ],
         [KeyboardButton(t(lang, "menu_stats")), KeyboardButton(t(lang, "menu_lang"))],
         [KeyboardButton(t(lang, "menu_settings"))],
     ]
@@ -224,6 +228,7 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # --- add flow ---------------------------------------------------------------
 
+
 async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not allowed(update, context):
         return
@@ -302,12 +307,22 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         req = _requestor(update)
         lang = lang_for(context, update)
         if info.is_playlist:
-            context.user_data["pending"] = {"info": info, "page": 0, "quality": settings.quality}
+            context.user_data["pending"] = {
+                "info": info,
+                "page": 0,
+                "quality": settings.quality,
+            }
             await _enqueue(update, context, mode, status_msg=status)
         else:
             job = await _add_job(
-                update, context, info, req, lang, mode,
-                status_msg=status, quality=settings.quality,
+                update,
+                context,
+                info,
+                req,
+                lang,
+                mode,
+                status_msg=status,
+                quality=settings.quality,
             )
             if job is None:  # already archived (pre-check race)
                 await status.edit_text(L(context, update, "already_in_library"))
@@ -315,7 +330,11 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # "ask me every time" (the default): the confirm screen, pre-filled with the
     # user's default quality
-    context.user_data["pending"] = {"info": info, "page": 0, "quality": settings.quality}
+    context.user_data["pending"] = {
+        "info": info,
+        "page": 0,
+        "quality": settings.quality,
+    }
     try:
         # edit the "🔎 Fetching…" status message *in place* into the confirm
         # screen (never send a second message and leave the status dangling)
@@ -333,7 +352,12 @@ def _audio_label(s: Services, lang: str, info: UrlInfo) -> str:
 
 def _audio_mode_label(lang: str, mode: str) -> str:
     """Human label for an audio mode (settings + confirm screen)."""
-    return t(lang, {"all": "mode_all", "orig": "mode_orig", "audio": "mode_audio"}.get(mode, "mode_orig"))
+    return t(
+        lang,
+        {"all": "mode_all", "orig": "mode_orig", "audio": "mode_audio"}.get(
+            mode, "mode_orig"
+        ),
+    )
 
 
 def _quality_label(lang: str, quality: int | None) -> str:
@@ -355,7 +379,9 @@ def _detail_lines(context, update, info: UrlInfo) -> list[str]:
     if info.channel and info.channel != "unknown":
         lines.append(f"{t(lang, 'detail_channel')}: {info.channel}")
     if info.duration:
-        lines.append(f"{t(lang, 'detail_duration')}: {plex.format_duration(info.duration)}")
+        lines.append(
+            f"{t(lang, 'detail_duration')}: {plex.format_duration(info.duration)}"
+        )
     if info.resolution:
         lines.append(f"{t(lang, 'detail_resolution')}: {info.resolution}")
     lines.append(f"{t(lang, 'detail_audio')}: {_audio_label(svc(context), lang, info)}")
@@ -406,24 +432,35 @@ async def _render_confirm(
             ]
         )
         if s.config.multi_audio:
-            rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
-        rows.append([InlineKeyboardButton(t(lang, "btn_audio_only_n", n=n), callback_data="ao")])
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        t(lang, "btn_original_audio"), callback_data="db"
+                    )
+                ]
+            )
+        rows.append(
+            [InlineKeyboardButton(t(lang, "btn_audio_only_n", n=n), callback_data="ao")]
+        )
         for i, e in enumerate(chunk):
             idx = start + i
             label = f"{idx + 1}. {e.title[:30]}"
-            if (
-                s.archive.contains(dedupe_key(info.site, e.id, False))
-                and s.archive.contains(dedupe_key(info.site, e.id, True))
-            ):
+            if s.archive.contains(
+                dedupe_key(info.site, e.id, False)
+            ) and s.archive.contains(dedupe_key(info.site, e.id, True)):
                 # both the video and the audio are already archived — mark it
                 label = f"✓ {label}"
             rows.append([InlineKeyboardButton(label, callback_data=f"e{idx}")])
         if pages > 1:
             nav = []
             if page > 0:
-                nav.append(InlineKeyboardButton(t(lang, "btn_back"), callback_data="bp"))
+                nav.append(
+                    InlineKeyboardButton(t(lang, "btn_back"), callback_data="bp")
+                )
             if page < pages - 1:
-                nav.append(InlineKeyboardButton(t(lang, "btn_next"), callback_data="np"))
+                nav.append(
+                    InlineKeyboardButton(t(lang, "btn_next"), callback_data="np")
+                )
             if nav:
                 rows.append(nav)
         rows.append([InlineKeyboardButton(t(lang, "btn_cancel"), callback_data="c")])
@@ -438,15 +475,27 @@ async def _render_confirm(
             if s.config.multi_audio:
                 rows.append(
                     [
-                        InlineKeyboardButton(t(lang, "btn_download_all"), callback_data="da"),
-                        InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db"),
+                        InlineKeyboardButton(
+                            t(lang, "btn_download_all"), callback_data="da"
+                        ),
+                        InlineKeyboardButton(
+                            t(lang, "btn_original_audio"), callback_data="db"
+                        ),
                     ]
                 )
             else:
                 # single-track mode: original audio (the only option without MULTI_AUDIO)
-                rows.append([InlineKeyboardButton(t(lang, "btn_original_audio"), callback_data="db")])
+                rows.append(
+                    [
+                        InlineKeyboardButton(
+                            t(lang, "btn_original_audio"), callback_data="db"
+                        )
+                    ]
+                )
         if not audio_done:
-            rows.append([InlineKeyboardButton(t(lang, "btn_audio_only"), callback_data="ao")])
+            rows.append(
+                [InlineKeyboardButton(t(lang, "btn_audio_only"), callback_data="ao")]
+            )
         rows.append([InlineKeyboardButton(t(lang, "btn_cancel"), callback_data="c")])
         markup = InlineKeyboardMarkup(rows)
 
@@ -549,7 +598,15 @@ async def _enqueue(
 
     if entry_idx is not None:
         # a single playlist entry
-        job = await _add_job(update, context, _target_info(context, entry_idx), req, lang, audio_mode, quality=quality)
+        job = await _add_job(
+            update,
+            context,
+            _target_info(context, entry_idx),
+            req,
+            lang,
+            audio_mode,
+            quality=quality,
+        )
         context.user_data["pending"] = None
         if job is None:
             await _close_confirm(update, context, "already_in_library")
@@ -559,7 +616,9 @@ async def _enqueue(
 
     if not base_info.is_playlist:
         # single video
-        job = await _add_job(update, context, base_info, req, lang, audio_mode, quality=quality)
+        job = await _add_job(
+            update, context, base_info, req, lang, audio_mode, quality=quality
+        )
         context.user_data["pending"] = None
         if job is None:
             await _close_confirm(update, context, "already_in_library")
@@ -570,18 +629,37 @@ async def _enqueue(
     # playlist: fan out to one independently cancellable job per entry
     added = skipped = 0
     for i in range(len(base_info.entries)):
-        job = await _add_job(update, context, _target_info(context, i), req, lang, audio_mode, quality=quality)
+        job = await _add_job(
+            update,
+            context,
+            _target_info(context, i),
+            req,
+            lang,
+            audio_mode,
+            quality=quality,
+        )
         if job is None:
             skipped += 1
         else:
             added += 1
     context.user_data["pending"] = None
     if added and skipped:
-        await _close_confirm(update, context, "added_many_skip", n=added, m=skipped, status_msg=status_msg)
+        await _close_confirm(
+            update,
+            context,
+            "added_many_skip",
+            n=added,
+            m=skipped,
+            status_msg=status_msg,
+        )
     elif added:
-        await _close_confirm(update, context, "added_many", n=added, status_msg=status_msg)
+        await _close_confirm(
+            update, context, "added_many", n=added, status_msg=status_msg
+        )
     else:
-        await _close_confirm(update, context, "already_in_library", status_msg=status_msg)
+        await _close_confirm(
+            update, context, "already_in_library", status_msg=status_msg
+        )
 
 
 async def _reply(update, context, key: str, **kw) -> None:
@@ -795,6 +873,7 @@ async def on_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 # --- queue view -------------------------------------------------------------
 
+
 def _job_line(s: Services, lang: str, job) -> str:
     if job.state == "downloading":
         return t(lang, "job_running", title=job.title[:40], pct=int(job.pct))
@@ -824,20 +903,19 @@ async def render_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     rows = []
     for i, job in enumerate(jobs):
         rows.append(
-            [
-                InlineKeyboardButton(
-                    t(lang, "job_cancel"), callback_data=f"cxj{i}"
-                )
-            ]
+            [InlineKeyboardButton(t(lang, "job_cancel"), callback_data=f"cxj{i}")]
         )
     markup = InlineKeyboardMarkup(rows)
     if update.callback_query:
-        await update.callback_query.edit_message_text("\n".join(lines), reply_markup=markup)
+        await update.callback_query.edit_message_text(
+            "\n".join(lines), reply_markup=markup
+        )
     else:
         await update.effective_message.reply_text("\n".join(lines), reply_markup=markup)
 
 
 # --- library ---------------------------------------------------------------
+
 
 async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     s = svc(context)
@@ -856,14 +934,24 @@ async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             code = f"s{i}"
             code_map[code] = site
             lines.append(t(lang, "library_site", site=site, n=n))
-            rows.append([InlineKeyboardButton(t(lang, "library_site", site=site, n=n), callback_data=f"lsc{code}")])
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        t(lang, "library_site", site=site, n=n),
+                        callback_data=f"lsc{code}",
+                    )
+                ]
+            )
         context.user_data["lib_sites"] = code_map
         markup = InlineKeyboardMarkup(rows)
     else:
         site = stack[0]
         if len(stack) == 1:
             chans = s.library.channels(site)
-            lines = [t(lang, "library_title"), t(lang, "library_site", site=site, n=len(chans))]
+            lines = [
+                t(lang, "library_title"),
+                t(lang, "library_site", site=site, n=len(chans)),
+            ]
             code_map = {}
             rows = []
             for i, (ch, n) in enumerate(chans):
@@ -873,28 +961,49 @@ async def render_library(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 lines.append(label)
                 rows.append([InlineKeyboardButton(label, callback_data=f"lcc{code}")])
             context.user_data["lib_chans"] = code_map
-            rows.append([InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")])
+            rows.append(
+                [InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")]
+            )
             markup = InlineKeyboardMarkup(rows)
         else:
             ch = stack[1]
             files = s.library.files(site, ch)
-            lines = [t(lang, "library_title"), t(lang, "library_site", site=site, n=1), t(lang, "library_channel", channel=ch, n=len(files))]
+            lines = [
+                t(lang, "library_title"),
+                t(lang, "library_site", site=site, n=1),
+                t(lang, "library_channel", channel=ch, n=len(files)),
+            ]
             rows: list[list[InlineKeyboardButton]] = []
             for i, f in enumerate(files):
-                audio = ",".join(f.audio) if f.audio else t(lang, "library_file_audio_none")
+                audio = (
+                    ",".join(f.audio) if f.audio else t(lang, "library_file_audio_none")
+                )
                 if len(f.audio) == 1:
                     audio = t(lang, "library_file_audio_single")
-                lines.append(t(lang, "library_file", name=f.name[:60], size=_size(f.size_bytes), date=f.date[:10] or "?", audio=audio))
+                lines.append(
+                    t(
+                        lang,
+                        "library_file",
+                        name=f.name[:60],
+                        size=_size(f.size_bytes),
+                        date=f.date[:10] or "?",
+                        audio=audio,
+                    )
+                )
                 # one 🗑 button per file -> confirm -> delete (files + ledger slot)
                 rows.append(
                     [InlineKeyboardButton(f"🗑 {f.name[:36]}", callback_data=f"ld{i}")]
                 )
             context.user_data["lib_files"] = [f.sidecar.as_posix() for f in files]
-            rows.append([InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")])
+            rows.append(
+                [InlineKeyboardButton(t(lang, "library_back"), callback_data="lback")]
+            )
             markup = InlineKeyboardMarkup(rows)
 
     if update.callback_query:
-        await update.callback_query.edit_message_text("\n".join(lines), reply_markup=markup)
+        await update.callback_query.edit_message_text(
+            "\n".join(lines), reply_markup=markup
+        )
     else:
         await update.effective_message.reply_text("\n".join(lines), reply_markup=markup)
 
@@ -943,10 +1052,13 @@ async def _delete_item(s: Services, sidecar: Path) -> None:
 
 # --- stats -----------------------------------------------------------------
 
+
 async def render_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     s = svc(context)
     lang = lang_for(context, update)
-    st = s.stats.compute(queue_length=s.manager.queue_length() + len(s.manager.active_jobs()))
+    st = s.stats.compute(
+        queue_length=s.manager.queue_length() + len(s.manager.active_jobs())
+    )
     lines = [t(lang, "stats_title")]
     lines.append(t(lang, "stats_total", n=st["total_downloads"]))
     lines.append(t(lang, "stats_size", size=_size(st["total_size_bytes"])))
@@ -980,6 +1092,7 @@ async def render_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 # --- language --------------------------------------------------------------
 
+
 async def render_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     s = svc(context)
     lang = lang_for(context, update)
@@ -1000,6 +1113,7 @@ async def render_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # --- settings (per-user default download options) ---------------------------
 
+
 async def render_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show the user's default download options and let them change them.
 
@@ -1015,7 +1129,11 @@ async def render_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "",
         t(lang, "settings_audio", label=_audio_mode_label(lang, st.audio_mode)),
         t(lang, "settings_quality", label=_quality_label(lang, st.quality)),
-        t(lang, "settings_auto", label=t(lang, "on") if st.auto_download else t(lang, "off")),
+        t(
+            lang,
+            "settings_auto",
+            label=t(lang, "on") if st.auto_download else t(lang, "off"),
+        ),
         "",
         t(lang, "settings_hint"),
     ]
@@ -1050,6 +1168,7 @@ async def render_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # --- callback dispatcher ----------------------------------------------------
+
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not allowed(update, context):
@@ -1192,8 +1311,12 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             kb = InlineKeyboardMarkup(
                 [
                     [
-                        InlineKeyboardButton(t(lang, "delete_yes"), callback_data="dl_yes"),
-                        InlineKeyboardButton(t(lang, "delete_no"), callback_data="dl_no"),
+                        InlineKeyboardButton(
+                            t(lang, "delete_yes"), callback_data="dl_yes"
+                        ),
+                        InlineKeyboardButton(
+                            t(lang, "delete_no"), callback_data="dl_no"
+                        ),
                     ],
                 ]
             )
@@ -1274,6 +1397,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # --- last-resort error handling --------------------------------------------
 
+
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Catch anything that slips past the per-handler guards.
 
@@ -1295,6 +1419,7 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # --- registration ----------------------------------------------------------
+
 
 def register(app, s: Services) -> None:
     app.add_error_handler(on_error)

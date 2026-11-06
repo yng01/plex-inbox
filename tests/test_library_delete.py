@@ -171,6 +171,8 @@ async def test_delete_refreshes_plex(tmp_path):
     await handlers.on_callback(_cb("ld0", msg), ctx)
     await handlers.on_callback(_cb("dl_yes", msg), ctx)
 
-    refresh = [p for p in svc.http.posts if p["url"].endswith("/library/sections/refresh")]
+    refresh = [
+        p for p in svc.http.posts if p["url"].endswith("/library/sections/refresh")
+    ]
     assert refresh, "Plex refresh was not triggered after deletion"
     assert refresh[0]["headers"].get("X-Plex-Token") == "secret"

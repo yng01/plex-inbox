@@ -54,7 +54,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Menu is already open (pinned above your keyboard)",
         "ar": "القائمة مفتوحة بالفعل",
     },
-
     # --- Add flow ---
     "add_prompt": {
         "en": "Paste a video, playlist, or channel URL (any site yt-dlp supports):",
@@ -121,7 +120,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "⚠️ This playlist/channel has {n} entries. “Download all” will queue every one of them.",
         "ar": "⚠️ هذه القائمة/القناة تحتوي على {n} عنصر. «تحميل الكل» سيضيف جميعها إلى قائمة الانتظار.",
     },
-
     # --- Video file (uploaded to the bot) ---
     "video_receiving": {
         "en": "📥 Receiving your video…",
@@ -139,7 +137,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Uploaded Video",
         "ar": "فيديو مرفوع",
     },
-
     # --- Download lifecycle ---
     "queued": {
         "en": "⏳ In queue (position {pos})…",
@@ -165,7 +162,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "🚫 Cancelled — partial files removed.",
         "ar": "🚫 أُلغي — حُذفت الملفات الجزئية.",
     },
-
     # --- Queue view ---
     "queue_title": {"en": "🕒 Queue", "ar": "🕒 قائمة الانتظار"},
     "no_jobs": {"en": "🕒 Queue is empty.", "ar": "🕒 قائمة الانتظار فارغة."},
@@ -181,7 +177,6 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "job_cancel": {"en": "🚫 Cancel", "ar": "🚫 إلغاء"},
     "queue_menu": {"en": "🏠 Menu", "ar": "🏠 القائمة"},
-
     # --- Library ---
     "library_title": {"en": "📚 Library", "ar": "📚 المكتبة"},
     "library_empty": {
@@ -221,7 +216,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Nothing to delete right now — open the Library and pick an item.",
         "ar": "لا يوجد ما يحذف الآن — افتح المكتبة واختر عنصراً.",
     },
-
     # --- Stats ---
     "stats_title": {"en": "📊 Stats", "ar": "📊 الإحصائيات"},
     "stats_total": {
@@ -252,7 +246,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "ar": "آخر فحص للتحديث: {t}",
     },
     "stats_none": {"en": "  (none yet)", "ar": "  (لا يوجد بعد)"},
-
     # --- Language ---
     "lang_title": {
         "en": "🌐 Choose your language",
@@ -264,7 +257,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "✅ Language set to {name}.",
         "ar": "✅ تم ضبط اللغة على {name}.",
     },
-
     # --- Settings (per-user default download options) ---
     "menu_settings": {
         "en": "⚙️ Settings",
@@ -320,7 +312,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "Auto-download: Off",
         "ar": "التنزيل التلقائي: تعطيل",
     },
-
     # --- Errors (user-safe, short) ---
     "error_generic": {
         "en": "😕 Something went wrong. Please try again.",
@@ -346,7 +337,6 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "⏱️ Timed out fetching info. Try again.",
         "ar": "⏱️ انتهت المهلة أثناء جلب المعلومات. حاول مرة أخرى.",
     },
-
     # --- Misc ---
     "debug_id": {
         "en": "🔧 Your Telegram user ID is {id}",

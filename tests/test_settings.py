@@ -143,7 +143,9 @@ async def test_auto_download_all_mode_degrades_without_multi_audio(tmp_path):
     import dataclasses
 
     cfg, svc, ctx = make_env(tmp_path)
-    svc.config = dataclasses.replace(svc.config, multi_audio=False)  # single-audio deployment
+    svc.config = dataclasses.replace(
+        svc.config, multi_audio=False
+    )  # single-audio deployment
     _set_auto(svc, mode="all")
     svc.probe_spawner = FakeProbeSpawner(stdout=json.dumps(PROBE_JSON))
     msg, upd = _url_update()
@@ -172,7 +174,9 @@ async def test_auto_download_of_archived_item_edits_status_in_place(tmp_path):
 
 
 def status_edited_to_queued(msg: FakeMessage) -> bool:
-    return msg.last_reply is not None and msg.last_reply.edits[-1] == t("en", "queued", pos=1)
+    return msg.last_reply is not None and msg.last_reply.edits[-1] == t(
+        "en", "queued", pos=1
+    )
 
 
 # --- on_text: "ask me every time" (default) -----------------------------------
@@ -193,7 +197,9 @@ async def test_ask_every_time_prefills_saved_quality_on_confirm(tmp_path):
     datas = [b.callback_data for row in markup.inline_keyboard for b in row]
     assert "q720" in datas and "qbest" in datas
     checked = [
-        b.callback_data for row in markup.inline_keyboard for b in row
+        b.callback_data
+        for row in markup.inline_keyboard
+        for b in row
         if b.text.startswith("✓")
     ]
     assert checked == ["q720"]
@@ -212,7 +218,9 @@ async def test_quality_selection_marks_button_and_updates_pending(tmp_path):
     assert ctx.user_data["pending"]["quality"] == 720
     markup = cq.message.edit_markups[-1]
     checked = [
-        b.callback_data for row in markup.inline_keyboard for b in row
+        b.callback_data
+        for row in markup.inline_keyboard
+        for b in row
         if b.text.startswith("✓")
     ]
     assert checked == ["q720"]
@@ -228,7 +236,9 @@ async def test_quality_best_switches_selection_back(tmp_path):
     assert ctx.user_data["pending"]["quality"] is None
     markup = cq.message.edit_markups[-1]
     checked = [
-        b.callback_data for row in markup.inline_keyboard for b in row
+        b.callback_data
+        for row in markup.inline_keyboard
+        for b in row
         if b.text.startswith("✓")
     ]
     assert checked == ["qbest"]
@@ -267,9 +277,16 @@ async def test_settings_screen_renders_current_state(tmp_path):
     assert t("en", "settings_quality", label="720p") in last
     markup = _settings_markup(cq)
     datas = [b.callback_data for row in markup.inline_keyboard for b in row]
-    assert "sa_audio" in datas and "sq720" in datas and "sqbest" in datas and "sauto" in datas
+    assert (
+        "sa_audio" in datas
+        and "sq720" in datas
+        and "sqbest" in datas
+        and "sauto" in datas
+    )
     checked = [
-        b.callback_data for row in markup.inline_keyboard for b in row
+        b.callback_data
+        for row in markup.inline_keyboard
+        for b in row
         if b.text.startswith("✓")
     ]
     assert sorted(checked) == ["sa_audio", "sq720"]

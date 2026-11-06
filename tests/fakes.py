@@ -122,7 +122,9 @@ class FakeHttp:
         self.posts: list[dict] = []
 
     async def get(self, url, timeout=None, follow_redirects=False, headers=None):
-        self.gets.append({"url": url, "timeout": timeout, "headers": dict(headers or {})})
+        self.gets.append(
+            {"url": url, "timeout": timeout, "headers": dict(headers or {})}
+        )
         return FakeResponse(self.get_status, self.get_content)
 
     async def post(self, url, headers=None, timeout=None):
@@ -275,7 +277,11 @@ class FakeBot:
             new_kb is None or cur_kb is None or type(cur_kb) is type(new_kb)
         ):
             raise Exception("Bad Request: message is not modified")
-        if cur_kb is not None and new_kb is not None and type(cur_kb) is not type(new_kb):
+        if (
+            cur_kb is not None
+            and new_kb is not None
+            and type(cur_kb) is not type(new_kb)
+        ):
             raise Exception("Bad Request: Inline keyboard expected")
         if new_kb is not None:
             self.keyboards[message_id] = new_kb

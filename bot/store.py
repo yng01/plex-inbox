@@ -115,7 +115,9 @@ class Archive:
             path = self.data_dir / path
         return path.exists()
 
-    def add(self, key: str, requestor: str, rel_path: str, ts: str | None = None) -> None:
+    def add(
+        self, key: str, requestor: str, rel_path: str, ts: str | None = None
+    ) -> None:
         entries = self._reload()
         ts = ts or _now_iso()
         entry = ArchiveEntry(key, requestor, ts, rel_path)

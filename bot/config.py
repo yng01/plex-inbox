@@ -131,7 +131,9 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
     if (plex_url and not plex_token) or (plex_token and not plex_url):
         raise ConfigError("PLEX_URL and PLEX_TOKEN must both be set (or both unset)")
     if plex_url and not plex_url.startswith(("http://", "https://")):
-        raise ConfigError(f"PLEX_URL must start with http:// or https://, got {plex_url!r}")
+        raise ConfigError(
+            f"PLEX_URL must start with http:// or https://, got {plex_url!r}"
+        )
 
     video_format = (e.get("VIDEO_FORMAT") or "").strip() or None
 
@@ -153,7 +155,9 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         max_concurrent=_int(e.get("MAX_CONCURRENT"), "MAX_CONCURRENT", 2),
         multi_audio=_flag(e.get("MULTI_AUDIO"), "MULTI_AUDIO", True),
         auto_update=_flag(e.get("AUTO_UPDATE"), "AUTO_UPDATE", True),
-        update_check_hours=_float(e.get("UPDATE_CHECK_HOURS"), "UPDATE_CHECK_HOURS", 24.0),
+        update_check_hours=_float(
+            e.get("UPDATE_CHECK_HOURS"), "UPDATE_CHECK_HOURS", 24.0
+        ),
         write_nfo=_flag(e.get("WRITE_NFO"), "WRITE_NFO", True),
         plex_url=plex_url,
         plex_token=plex_token,

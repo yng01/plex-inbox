@@ -130,15 +130,21 @@ class Updater:
             proc = self._runner(list(cmd))
             stdout, stderr = await proc.communicate()
             rc = proc.returncode if proc.returncode is not None else 0
-            return rc, stdout.decode("utf-8", "replace"), stderr.decode("utf-8", "replace")
+            return (
+                rc,
+                stdout.decode("utf-8", "replace"),
+                stderr.decode("utf-8", "replace"),
+            )
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         out, err = await proc.communicate()
-        return proc.returncode or 0, out.decode("utf-8", "replace"), err.decode(
-            "utf-8", "replace"
+        return (
+            proc.returncode or 0,
+            out.decode("utf-8", "replace"),
+            err.decode("utf-8", "replace"),
         )
 
     async def current_version(self) -> str:
@@ -167,7 +173,9 @@ class Updater:
     async def check_and_maybe_upgrade(self) -> UpdateState:
         from datetime import datetime, timezone
 
-        st = UpdateState(checked_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        st = UpdateState(
+            checked_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
         st.current = await self.current_version()
         st.latest = await self.latest_version()
         if not self.config.auto_update:

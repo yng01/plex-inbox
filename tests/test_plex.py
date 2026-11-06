@@ -58,14 +58,20 @@ def test_build_tags_single_audio_omitted():
 
 def test_build_tags_dedupe_audio_langs():
     # case-insensitive duplicates collapse to one tag per language
-    tags = plex.build_tags("YouTube", "c", "alice", ["en", "EN", "ar", "AR", "ar"], 2020, 10)
+    tags = plex.build_tags(
+        "YouTube", "c", "alice", ["en", "EN", "ar", "AR", "ar"], 2020, 10
+    )
     assert tags.count("audio:en") == 1
     assert tags.count("audio:ar") == 1
 
 
 def test_nfo_xml_wellformed(tmp_path):
     p = plex.write_nfo(
-        tmp_path / "v.nfo", "Title X", "summary", 2021, "Drama",
+        tmp_path / "v.nfo",
+        "Title X",
+        "summary",
+        2021,
+        "Drama",
         ["site:youtube", "requested:alice"],
     )
     root = ET.parse(p).getroot()
@@ -113,7 +119,10 @@ def test_sidecar_roundtrip(tmp_path):
 
 def test_pick_poster_url_prefers_avatar():
     class I:
-        raw = {"channel_favicon": "https://i/av.png", "thumbnail": "https://i/thumb.jpg"}
+        raw = {
+            "channel_favicon": "https://i/av.png",
+            "thumbnail": "https://i/thumb.jpg",
+        }
 
     assert plex.pick_poster_url(I()) == "https://i/av.png"
 
@@ -179,7 +188,9 @@ async def test_download_image_ok(tmp_path):
 
 async def test_download_image_fail(tmp_path):
     http = FakeHttp(get_status=404)
-    assert await plex.download_image(http, "https://i/t.jpg", tmp_path / "x.jpg") is False
+    assert (
+        await plex.download_image(http, "https://i/t.jpg", tmp_path / "x.jpg") is False
+    )
 
 
 async def test_refresh_plex_ok_and_fail():

@@ -138,9 +138,11 @@ def build_nfo_xml(
         for tag in tags:
             ET.SubElement(tags_el, "tag").text = tag
     ET.indent(root)  # py>=3.9
-    return '<?xml version="1.0" encoding="utf-8" ?>\n' + ET.tostring(
-        root, encoding="unicode"
-    ) + "\n"
+    return (
+        '<?xml version="1.0" encoding="utf-8" ?>\n'
+        + ET.tostring(root, encoding="unicode")
+        + "\n"
+    )
 
 
 def write_nfo(
@@ -153,9 +155,7 @@ def write_nfo(
 ) -> Path:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(
-        build_nfo_xml(title, summary, year, genre, tags), encoding="utf-8"
-    )
+    p.write_text(build_nfo_xml(title, summary, year, genre, tags), encoding="utf-8")
     return p
 
 
@@ -200,9 +200,7 @@ def write_sidecar(path: Path, sc: Sidecar) -> Path:
         "genres": sc.genres,
         "tags": sc.tags,
     }
-    p.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return p
 
 

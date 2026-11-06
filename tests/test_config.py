@@ -60,9 +60,7 @@ def test_whitelist_invalid():
 
 
 def test_plex_pair_required():
-    c = load_config(
-        {**BASE, "PLEX_URL": "https://plex.example", "PLEX_TOKEN": "tok"}
-    )
+    c = load_config({**BASE, "PLEX_URL": "https://plex.example", "PLEX_TOKEN": "tok"})
     assert c.plex_enabled is True
     assert c.plex_url == "https://plex.example"
     assert load_config(BASE).plex_enabled is False
@@ -81,7 +79,11 @@ def test_bot_api_base_urls():
     # empty strings are treated as unset (default mode)
     assert (
         load_config(
-            {**BASE, "TELEGRAM_BOT_API_BASE_URL": "", "TELEGRAM_BOT_API_BASE_FILE_URL": ""}
+            {
+                **BASE,
+                "TELEGRAM_BOT_API_BASE_URL": "",
+                "TELEGRAM_BOT_API_BASE_FILE_URL": "",
+            }
         ).bot_api_base_url
         is None
     )

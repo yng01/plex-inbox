@@ -57,7 +57,9 @@ def make_env(tmp_path):
     async def fake_probe(path):
         return 2  # the fake "video" has two audio streams
 
-    manager = DownloadManager(cfg, archive, spawner=spawner, http=http, notify_interval=0.01)
+    manager = DownloadManager(
+        cfg, archive, spawner=spawner, http=http, notify_interval=0.01
+    )
     manager.ffprobe_audio = fake_probe
     svc = handlers.Services(
         config=cfg,
@@ -223,7 +225,9 @@ async def test_on_video_same_file_twice_is_noop(tmp_path, monkeypatch):
         )
         return FakeMessage(
             id=20,
-            video=FakeVideo(tg_file, file_name="My Clip.mkv", file_unique_id=file_unique_id),
+            video=FakeVideo(
+                tg_file, file_name="My Clip.mkv", file_unique_id=file_unique_id
+            ),
         )
 
     # first send: archived (the file is streamed in once)
@@ -241,7 +245,9 @@ async def test_on_video_same_file_twice_is_noop(tmp_path, monkeypatch):
     assert len(svc.manager._jobs) == 1
     assert msg2.video.get_file_calls == 0, "duplicate must not re-download"
     assert t("en", "already_in_library") in msg2.replies
-    assert t("en", "video_receiving") not in msg2.replies, "no 'receiving' for a duplicate"
+    assert t("en", "video_receiving") not in msg2.replies, (
+        "no 'receiving' for a duplicate"
+    )
     assert not list(base.iterdir()), "no temp dir for the skipped send"
     assert spawner.commands == []
 
@@ -272,7 +278,9 @@ async def test_too_big_file_gets_specific_message(tmp_path, monkeypatch):
     cfg, svc, spawner, ctx = make_env(tmp_path)
 
     video = FakeVideo(
-        TelegramFile(file_id="AgADbig", file_unique_id="uniq-big", file_path="/x/big.mkv"),
+        TelegramFile(
+            file_id="AgADbig", file_unique_id="uniq-big", file_path="/x/big.mkv"
+        ),
         get_file_error=BadRequest("File is too big"),
     )
     msg = FakeMessage(id=35, video=video)
@@ -293,7 +301,9 @@ async def test_on_video_video_note(tmp_path, monkeypatch):
     src = tmp_path / "circle.mp4"
     payload = b"circles" * 50
     src.write_bytes(payload)
-    tg_file = TelegramFile(file_id="AgADvn", file_unique_id="uniq-vn", file_path=str(src))
+    tg_file = TelegramFile(
+        file_id="AgADvn", file_unique_id="uniq-vn", file_path=str(src)
+    )
     vn = FakeVideoNote(tg_file, duration=7.0, length=7, file_size=len(payload))
     msg = FakeMessage(id=40, video_note=vn)
 
@@ -337,13 +347,17 @@ async def test_local_job_missing_source_fails_cleanly(tmp_path):
     # no partials left in the target dir
     d = cfg.data_dir / "Upload" / "ali"
     if d.exists():
-        assert [p.name for p in d.iterdir() if not p.name.startswith(".inflight-")] == []
+        assert [
+            p.name for p in d.iterdir() if not p.name.startswith(".inflight-")
+        ] == []
 
 
 def test_real_ffprobe_audio_bad_binary_returns_zero(tmp_path):
     p = tmp_path / "x.mp4"
     p.write_bytes(b"x")
-    assert asyncio.run(real_ffprobe_audio("definitely-not-a-binary", p, timeout=2.0)) == 0
+    assert (
+        asyncio.run(real_ffprobe_audio("definitely-not-a-binary", p, timeout=2.0)) == 0
+    )
 
 
 async def test_local_job_audio_count_from_injected_probe(tmp_path):

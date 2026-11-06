@@ -268,7 +268,9 @@ def _to_bytes(s: str) -> float | None:
     return v if v and v > 0 else None
 
 
-def parse_progress(line: str) -> tuple[float, str, str, float | None, float | None] | None:
+def parse_progress(
+    line: str,
+) -> tuple[float, str, str, float | None, float | None] | None:
     """Parse a progress line; ``None`` when the line is not one.
 
     Returns ``(pct, speed, eta, downloaded_bytes, total_bytes)``. The byte
@@ -310,9 +312,7 @@ def update_progress(
     """
     if dl is not None:
         if job._cur_bytes > 0 and dl < job._cur_bytes:
-            finished = (
-                job._cur_total if job._cur_total is not None else job._cur_bytes
-            )
+            finished = job._cur_total if job._cur_total is not None else job._cur_bytes
             job._bytes_done += finished
             if job._cur_total is not None:
                 job._totals_known += job._cur_total
@@ -400,7 +400,11 @@ def cleanup_leftovers(data_dir: str | Path) -> int:
         if d.exists():
             for p in list(d.iterdir()):
                 hit = False
-                if base and p.stem == base and p.suffix.lower().lstrip(".") in MEDIA_EXTS:
+                if (
+                    base
+                    and p.stem == base
+                    and p.suffix.lower().lstrip(".") in MEDIA_EXTS
+                ):
                     hit = True
                 if base and p.name in (f"{base}.nfo", f"{base}.jpg"):
                     hit = True
@@ -421,7 +425,9 @@ def human_size(n: float | int) -> str:
     return f"{n:.1f} TB"
 
 
-async def real_ffprobe_audio(ffprobe_bin: str, path: Path, timeout: float = 20.0) -> int:
+async def real_ffprobe_audio(
+    ffprobe_bin: str, path: Path, timeout: float = 20.0
+) -> int:
     """Count the audio streams in a local file via ``ffprobe``.
 
     Best-effort: any failure (missing binary, unreadable file, timeout) yields ``0``
@@ -447,7 +453,9 @@ async def real_ffprobe_audio(ffprobe_bin: str, path: Path, timeout: float = 20.0
         return 0
     if proc.returncode != 0:
         return 0
-    return sum(1 for line in out.decode("utf-8", "replace").splitlines() if line.strip())
+    return sum(
+        1 for line in out.decode("utf-8", "replace").splitlines() if line.strip()
+    )
 
 
 # --- manager ---------------------------------------------------------------
@@ -526,6 +534,7 @@ class DownloadManager:
             busy = {"queued", "downloading"}
             while any(j.state in busy for j in self._jobs.values()):
                 await asyncio.sleep(0.05)
+
         try:
             if timeout is None:
                 await _idle()
@@ -663,21 +672,15 @@ class DownloadManager:
             return  # user already sees exactly this — skip the no-op edit
         self._last_text[job.id] = text
         try:
-            await bot.edit_message_text(
-                chat_id=chat_id, message_id=msg_id, text=text
-            )
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text=text)
         except BadRequest:
             # "Message is not modified" (or a lost edit race): cosmetic — a
             # status edit must never be able to fail the download itself.
-            log.debug(
-                "status edit skipped for job %s: message unchanged", job.id
-            )
+            log.debug("status edit skipped for job %s: message unchanged", job.id)
 
     def _cmd(self, job: Job) -> list[str]:
         lang = job.info.language if job.info is not None else None
-        fmt = format_args(
-            self.config.video_format, job.audio_mode, lang, job.quality
-        )
+        fmt = format_args(self.config.video_format, job.audio_mode, lang, job.quality)
         out = job.target_dir / (job.base + ".%(ext)s")
         return [
             self.ytdlp_bin,
@@ -745,9 +748,7 @@ class DownloadManager:
                     pass
                 job.error = (tail or f"exit code {rc}")[:300]
                 self._cleanup(job, pre)
-                log.warning(
-                    "job %s failed (rc=%s): %s", job.id, rc, job.error
-                )
+                log.warning("job %s failed (rc=%s): %s", job.id, rc, job.error)
                 await self._safe_notify(job, force=True)
                 return
             await self._finalize(job)
@@ -844,7 +845,7 @@ class DownloadManager:
             if name.startswith(JOURNAL_PREFIX):
                 _remove(p)
                 continue
-            if name.startswith(job.base) and name[len(job.base):].startswith("."):
+            if name.startswith(job.base) and name[len(job.base) :].startswith("."):
                 _remove(p)
 
     async def _finalize(self, job: Job) -> None:
@@ -854,9 +855,7 @@ class DownloadManager:
         if video is None:
             # fall back to the newest media file the run produced
             vids = [
-                p
-                for p in d.iterdir()
-                if p.suffix.lower().lstrip(".") in MEDIA_EXTS
+                p for p in d.iterdir() if p.suffix.lower().lstrip(".") in MEDIA_EXTS
             ]
             video = max(vids, key=lambda p: p.stat().st_mtime) if vids else None
         if video is None:
@@ -878,9 +877,7 @@ class DownloadManager:
 
         # thumbnail (stem must match the video file)
         if info and info.thumbnail and self.http is not None:
-            await plex.download_image(
-                self.http, info.thumbnail, d / f"{job.base}.jpg"
-            )
+            await plex.download_image(self.http, info.thumbnail, d / f"{job.base}.jpg")
         # channel poster (best-effort), best source first:
         #   1. avatar field from the probe (channel_favicon & co.)
         #   2. YouTube channel page (og:image) when we have a channel id
@@ -940,8 +937,7 @@ class DownloadManager:
                     duration=info.duration,
                     year=info.year,
                     audio_tracks=[
-                        {"language": a.language, "codec": a.codec}
-                        for a in embedded
+                        {"language": a.language, "codec": a.codec} for a in embedded
                     ],
                     genres=list(info.genres),
                     tags=list(info.tags),
@@ -949,7 +945,9 @@ class DownloadManager:
             )
 
         self.archive.add(
-            dedupe_key(job.site, info.id if info else job.id, job.audio_mode == "audio"),
+            dedupe_key(
+                job.site, info.id if info else job.id, job.audio_mode == "audio"
+            ),
             job.requestor,
             rel,
         )

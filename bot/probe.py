@@ -38,6 +38,7 @@ class Spawner(Protocol):
 
 class Proc(Protocol):
     returncode: int | None
+
     async def communicate(self) -> tuple[bytes, bytes]: ...
     def kill(self) -> None: ...
 
@@ -67,7 +68,9 @@ class UrlInfo:
     channel_id: str | None = None  # e.g. YouTube channel id (avatar fallback lookup)
     duration: float | None = None
     resolution: str | None = None
-    language: str | None = None  # video's own language, e.g. "ar" (for original-audio selection)
+    language: str | None = (
+        None  # video's own language, e.g. "ar" (for original-audio selection)
+    )
     thumbnail: str | None = None
     description: str = ""
     year: int | None = None
@@ -201,15 +204,23 @@ def parse_probe(raw: dict) -> UrlInfo:
     is_playlist = isinstance(entries_raw, list) and len(entries_raw) > 0
 
     site = _clean(raw.get("extractor_key") or raw.get("extractor")) or "unknown"
-    channel = _clean(
-        raw.get("channel")
-        or raw.get("uploader")
-        or raw.get("uploader_id")
-        or raw.get("playlist_channel")
-        or raw.get("playlist_uploader")
-    ) or "unknown"
+    channel = (
+        _clean(
+            raw.get("channel")
+            or raw.get("uploader")
+            or raw.get("uploader_id")
+            or raw.get("playlist_channel")
+            or raw.get("playlist_uploader")
+        )
+        or "unknown"
+    )
 
-    title = _clean(raw.get("title")) or _clean(raw.get("playlist_title")) or raw.get("id") or "untitled"
+    title = (
+        _clean(raw.get("title"))
+        or _clean(raw.get("playlist_title"))
+        or raw.get("id")
+        or "untitled"
+    )
     url = _clean(raw.get("webpage_url") or raw.get("original_url")) or ""
     vid = str(raw.get("id") or raw.get("playlist_id") or "")
 
@@ -220,7 +231,9 @@ def parse_probe(raw: dict) -> UrlInfo:
                 continue
             e_title = _clean(e.get("title")) or e.get("id") or "untitled"
             e_url = _clean(e.get("webpage_url") or e.get("original_url")) or url
-            e_channel = _clean(e.get("channel") or e.get("uploader") or channel) or "unknown"
+            e_channel = (
+                _clean(e.get("channel") or e.get("uploader") or channel) or "unknown"
+            )
             entries.append(
                 Entry(
                     id=str(e.get("id") or e_url),
@@ -256,8 +269,12 @@ def parse_probe(raw: dict) -> UrlInfo:
 
 # --- error classification ---------------------------------------------------
 
-_PRIVATE_RE = re.compile(r"private|sign in|log ?in|login|authentication|age.?restrict", re.I)
-_REGION_RE = re.compile(r"region|geo.?restrict|not available in (your )?country|country", re.I)
+_PRIVATE_RE = re.compile(
+    r"private|sign in|log ?in|login|authentication|age.?restrict", re.I
+)
+_REGION_RE = re.compile(
+    r"region|geo.?restrict|not available in (your )?country|country", re.I
+)
 _UNAVAILABLE_RE = re.compile(r"unavailable|does not (exist|support)|no video|404", re.I)
 _UNSUPPORTED_RE = re.compile(r"unsupported url|no extractor|unknown (url|type)", re.I)
 
