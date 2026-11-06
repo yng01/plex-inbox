@@ -143,8 +143,13 @@ PAT, or set the registry credentials in `~/.docker/config.json`).
 - **📊 Stats** — totals, per-site and per-requestor breakdowns, queue length, and the
   current `yt-dlp` version plus when it was last updated.
 - **🌐 Language** — pick English or Arabic (also `/lang`).
+- **⚙️ Settings** — default audio mode, default quality, and auto-download (see above).
 
-Slash commands (`/add /queue /library /stats /lang /help`) are shortcuts to the menu.
+The menu itself is a **persistent reply-keyboard button bar** pinned above the input
+box — always visible, no scrolling. Re-sending `/menu` (or tapping back-to-menu from
+any screen) updates the **same** menu message in place, so the chat never fills up
+with duplicate menus. Slash commands (`/add /queue /library /stats /lang`) are
+shortcuts to the same screens.
 
 ## Disk layout
 

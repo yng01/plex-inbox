@@ -229,10 +229,15 @@ class FakeVideoNote(FakeVideo):
 
 class FakeBot:
     def __init__(self):
-        self.edits: list[tuple[int, int, str]] = []
+        self.edits: list[tuple[int, int, str, object | None]] = []
+        # ids that no longer exist (deleted / "too old to edit") -> raise,
+        # mirroring the Telegram server's BadRequest on edit_message_text
+        self.missing_ids: set[int] = set()
 
     async def edit_message_text(self, chat_id, message_id, text, **kw):
-        self.edits.append((chat_id, message_id, text))
+        if message_id in self.missing_ids:
+            raise Exception("Bad Request: message to edit not found")
+        self.edits.append((chat_id, message_id, text, kw.get("reply_markup")))
         return True
 
 
@@ -249,21 +254,28 @@ class FakeCallbackQuery:
         await self.message.edit_text(text, **kw)
 
 
+class FakeChat:
+    def __init__(self, id=100):
+        self.id = id
+
+
 class FakeUpdate:
-    def __init__(self, user=None, message=None, callback_query=None):
+    def __init__(self, user=None, message=None, callback_query=None, chat=None):
         self.effective_user = user or FakeUser()
         self.effective_message = message
         self.callback_query = callback_query
+        self.chat = chat or FakeChat()
 
     @property
     def effective_chat(self):
-        return None
+        return self.chat
 
 
 class FakeContext:
     def __init__(self, bot=None):
         self.user_data: dict = {}
         self.bot_data: dict = {}
+        self.chat_data: dict = {}
         self.bot = bot or FakeBot()
 
 

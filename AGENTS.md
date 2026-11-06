@@ -94,7 +94,12 @@ bot-download cap no longer applies.
    `file_unique_id`, …). Title/description stay in the NFO + `.info.json` sidecar for
    Plex. `sanitize_filename("")` → `"untitled"`.
 
-5. **Button-first, bilingual UI.** Prefer inline-keyboard buttons; keep EN/AR parity.
+5. **Button-first, bilingual UI.** Prefer buttons over typed input; keep EN/AR parity.
+   The **main menu is a reply-keyboard** (sticky, always visible above the input)
+   rendered by `cmd_menu`, which edits ONE canonical menu message per chat in
+   place (`context.chat_data["menu_msg_id"]`) so repeats never duplicate; a
+   reply-keyboard tap arrives as plain text in `on_text` and is routed via
+   `_MENU_LABELS`. Sub-screens stay inline-keyboard with a back-to-menu button.
    Access is gated by `ALLOWED_USER_IDS`.
 
 6. **Tests stay offline + token-free.** Introduce no network or real-token

@@ -17,7 +17,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -109,35 +115,69 @@ async def _answer(q: Update) -> None:
 
 # --- main menu --------------------------------------------------------------
 
-def main_menu_keyboard(s: Services, lang: str) -> InlineKeyboardMarkup:
+def main_menu_reply_keyboard(lang: str) -> ReplyKeyboardMarkup:
+    """The menu as a *reply keyboard* — a button bar that stays pinned above the
+    input box. That makes the menu always visible (no scrolling back up to reach
+    it) and, because a reply keyboard is sticky chat state rather than a message,
+    it can never accumulate into duplicate menu messages. Tapping a button sends
+    its label as plain text, which :func:`on_text` routes to the matching screen.
+    """
     kb = [
-        [InlineKeyboardButton(t(lang, "menu_add"), callback_data="m_add")],
-        [
-            InlineKeyboardButton(t(lang, "menu_queue"), callback_data="m_queue"),
-            InlineKeyboardButton(t(lang, "menu_library"), callback_data="m_lib"),
-        ],
-        [
-            InlineKeyboardButton(t(lang, "menu_stats"), callback_data="m_stats"),
-            InlineKeyboardButton(t(lang, "menu_lang"), callback_data="m_lang"),
-        ],
-        [InlineKeyboardButton(t(lang, "menu_settings"), callback_data="m_settings")],
+        [KeyboardButton(t(lang, "menu_add"))],
+        [KeyboardButton(t(lang, "menu_queue")), KeyboardButton(t(lang, "menu_library"))],
+        [KeyboardButton(t(lang, "menu_stats")), KeyboardButton(t(lang, "menu_lang"))],
+        [KeyboardButton(t(lang, "menu_settings"))],
     ]
-    return InlineKeyboardMarkup(kb)
+    return ReplyKeyboardMarkup(kb, resize_keyboard=True, one_time_keyboard=False)
+
+
+# A reply-keyboard button arrives as the label it was shown with, in whatever
+# language the menu was rendered in. Map both languages' labels to an action so
+# a tap is routed correctly no matter when the user last switched language.
+_MENU_LABELS: dict[str, str] = {}
+for _lang in ("en", "ar"):
+    _MENU_LABELS[t(_lang, "menu_add")] = "add"
+    _MENU_LABELS[t(_lang, "menu_queue")] = "queue"
+    _MENU_LABELS[t(_lang, "menu_library")] = "library"
+    _MENU_LABELS[t(_lang, "menu_stats")] = "stats"
+    _MENU_LABELS[t(_lang, "menu_lang")] = "lang"
+    _MENU_LABELS[t(_lang, "menu_settings")] = "settings"
 
 
 async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """(Re)show the menu on ONE canonical message per chat, edited in place.
+
+    Repeated ``/menu``/``/start`` or back-to-menu taps never create a second menu
+    message: if a menu message is already known for this chat it is edited in
+    place, and only when that message is gone (deleted, or too old to edit) is a
+    fresh one sent and remembered. The reply keyboard itself is sticky, so once
+    installed the menu stays pinned and visible without being re-sent.
+    """
     if not allowed(update, context):
         return
-    s = svc(context)
-    text = t(lang_for(context, update), "menu_title")
+    lang = lang_for(context, update)
+    text = t(lang, "menu_title")
+    kb = main_menu_reply_keyboard(lang)
+    chat = update.effective_chat
+    chat_id = chat.id if chat is not None else None
+
+    stored = context.chat_data.get("menu_msg_id") if chat_id is not None else None
+    if stored is not None:
+        try:
+            await context.bot.edit_message_text(chat_id, stored, text, reply_markup=kb)
+            return
+        except Exception:
+            # the remembered message is gone (deleted / "message is too old") —
+            # fall through and (re)send a fresh menu, then remember the new id
+            context.chat_data.pop("menu_msg_id", None)
+
     if update.callback_query:
-        await update.callback_query.edit_message_text(
-            text, reply_markup=main_menu_keyboard(s, lang_for(context, update))
-        )
-    else:
-        await update.effective_message.reply_text(
-            text, reply_markup=main_menu_keyboard(s, lang_for(context, update))
-        )
+        cq = update.callback_query
+        await cq.edit_message_text(text, reply_markup=kb)
+        context.chat_data["menu_msg_id"] = cq.message.message_id
+    elif update.effective_message:
+        msg = await update.effective_message.reply_text(text, reply_markup=kb)
+        context.chat_data["menu_msg_id"] = msg.message_id
 
 
 # --- add flow ---------------------------------------------------------------
@@ -154,6 +194,24 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     msg = update.effective_message
     text = (msg.text or "").strip()
+    # a tap on the persistent reply-keyboard menu arrives as the button's label
+    # (plain text) — route it to the matching screen before URL handling
+    action = _MENU_LABELS.get(text)
+    if action is not None:
+        if action == "add":
+            await cmd_add(update, context)
+        elif action == "queue":
+            await render_queue(update, context)
+        elif action == "library":
+            context.user_data["lib_stack"] = []
+            await render_library(update, context)
+        elif action == "stats":
+            await render_stats(update, context)
+        elif action == "lang":
+            await render_lang(update, context)
+        elif action == "settings":
+            await render_settings(update, context)
+        return
     m = URL_RE.match(text)
     if not m:
         await _reply(update, context, "not_a_url")
