@@ -100,8 +100,7 @@ def test_legacy_bare_key_migrates_to_video_slot(tmp_path):
     assert b.contains("YouTube:abc:video")
     assert not b.contains("YouTube:abc:audio")
     assert not b.contains("YouTube:abc")
-    ledger = (tmp_path / "archive.txt").read_text(encoding="utf-8")
-    assert "YouTube:abc:video" in ledger
+    assert {e.key for e in b.entries()} == {"YouTube:abc:video"}
     # migration is idempotent: reload again, still one entry
     c = Archive(tmp_path)
     assert len(c.entries()) == 1
@@ -117,6 +116,24 @@ def test_legacy_bare_key_with_audio_file_migrates_to_audio_slot(tmp_path):
     b = Archive(tmp_path)
     assert b.contains("YouTube:abc:audio")
     assert not b.contains("YouTube:abc:video")
+
+
+def test_imports_legacy_txt_ledger(tmp_path):
+    """A pre-SQLite archive.txt is imported (and mode-migrated) into archive.db."""
+    (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
+    (tmp_path / "YouTube" / "Chan" / "abc.mkv").write_bytes(b"x" * 16)
+    (tmp_path / "archive.txt").write_text(
+        "YouTube:abc\tali\t2024-01-01T00:00:00Z\tYouTube/Chan/abc.mkv\n",
+        encoding="utf-8",
+    )
+
+    a = Archive(tmp_path)
+
+    assert a.contains("YouTube:abc:video")
+    assert not a.contains("YouTube:abc")
+    # the legacy file is consumed so the import never re-runs
+    assert not (tmp_path / "archive.txt").exists()
+    assert (tmp_path / "archive.db").exists()
 
 
 def test_remove_item_clears_both_mode_slots(tmp_path):

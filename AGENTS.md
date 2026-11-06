@@ -97,8 +97,8 @@ bot-download cap no longer applies.
    subprocess or network error.
 
 3. **Dedupe = ledger AND file present.** `Archive.contains(key)` returns true only if
-   the item is in `archive.txt` **and** its on-disk file (the path recorded at
-   download time) still exists. A manually-deleted file is therefore re-downloadable.
+   the item is in `archive.db` (SQLite) **and** its on-disk file (the path recorded
+   at download time) still exists. A manually-deleted file is therefore re-downloadable.
    Keep the two in step: write the ledger entry only after the file is on disk.
    **Keys are mode-scoped** (`store.dedupe_key(site, id, audio_only)`):
    `<site>:<id>:video` for any video mode, `<site>:<id>:audio` for audio-only —

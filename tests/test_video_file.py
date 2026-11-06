@@ -189,8 +189,7 @@ async def test_on_video_archives_file_with_metadata(tmp_path, monkeypatch):
     assert "<title>My Clip</title>" in nfo
     assert f"<year>{year}</year>" in nfo
     assert "<tag>site:upload</tag>" in nfo
-    ledger = (cfg.data_dir / "archive.txt").read_text(encoding="utf-8")
-    assert "Upload:uniq-777:video" in ledger
+    assert svc.archive.contains("Upload:uniq-777:video")
 
     # the user saw one message: "receiving…" then "queued" (single status msg)
     status = msg.last_reply

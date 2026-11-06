@@ -1,9 +1,9 @@
 """Deduplication archive + library browsing + stats.
 
-``archive.txt`` is the dedupe ledger (one line per downloaded item, keyed by
-``<site>:<id>:<mode>`` where ``<mode>`` is ``video`` or ``audio``). Video and
-audio-only downloads of the same item are independent entries — each can be
-skipped, removed and re-downloaded on its own. The rich per-item record lives in
+``archive.db`` is the dedupe ledger — a SQLite table with one row per downloaded
+item, keyed by ``<site>:<id>:<mode>`` where ``<mode>`` is ``video`` or ``audio``.
+Video and audio-only downloads of the same item are independent entries — each can
+be skipped, removed and re-downloaded on its own. The rich per-item record lives in
 the on-disk sidecar ``<id>.info.json`` (written by ``plex.py``), which is the
 source of truth for the library browser and the stats views.
 """
@@ -11,6 +11,7 @@ source of truth for the library browser and the stats views.
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -46,43 +47,38 @@ class ArchiveEntry:
 
 
 class Archive:
+    """Dedupe ledger, persisted in SQLite (``archive.db``) on the data volume.
+
+    One row per downloaded item, keyed by the mode-scoped ``<site>:<id>:<mode>``
+    key. The on-disk ``<id>.info.json`` sidecar stays the source of truth for the
+    library browser; this table is only the dedupe index plus the recorded file
+    path used to verify the file is still present (see :meth:`contains`).
+    """
+
     def __init__(self, data_dir: str | Path):
         self.data_dir = Path(data_dir)
-        self.path = self.data_dir / "archive.txt"
-        self._cache: dict[str, ArchiveEntry] | None = None
+        self.path = self.data_dir / "archive.db"
+        self._legacy_txt = self.data_dir / "archive.txt"
+        self._conn: sqlite3.Connection | None = None
 
-    def _reload(self) -> dict[str, ArchiveEntry]:
-        entries: dict[str, ArchiveEntry] = {}
-        if self.path.exists():
-            for line in self.path.read_text(encoding="utf-8").splitlines():
-                line = line.rstrip("\n")
-                if not line.strip():
-                    continue
-                parts = line.split("\t")
-                if len(parts) >= 1:
-                    key = parts[0].strip()
-                    requestor = parts[1].strip() if len(parts) > 1 else ""
-                    ts = parts[2].strip() if len(parts) > 2 else ""
-                    rel = parts[3].strip() if len(parts) > 3 else ""
-                    if key:
-                        entries[key] = ArchiveEntry(key, requestor, ts, rel)
-        # One-time migration: pre-mode entries used a bare ``site:id`` key, so
-        # an audio-only download claimed the video's slot (and vice versa).
-        # Rewrite them to mode-suffixed keys, inferring the mode from the
-        # recorded file's extension. Idempotent once every key is suffixed.
-        migrated: dict[str, ArchiveEntry] = {}
-        changed = False
-        for e in entries.values():
-            nk = self._migrate_key(e.key, e.rel_path)
-            if nk != e.key:
-                changed = True
-                e = ArchiveEntry(nk, e.requestor, e.ts, e.rel_path)
-            if nk not in migrated:
-                migrated[nk] = e
-        if changed:
-            self._flush(migrated)
-        self._cache = migrated
-        return migrated
+    def _db(self) -> sqlite3.Connection:
+        """Open (once) and prepare the database, importing any legacy ledger."""
+        if self._conn is None:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(self.path))
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS archive ("
+                " key TEXT PRIMARY KEY,"
+                " requestor TEXT NOT NULL DEFAULT '',"
+                " ts TEXT NOT NULL DEFAULT '',"
+                " rel_path TEXT NOT NULL DEFAULT ''"
+                ")"
+            )
+            conn.commit()
+            self._conn = conn
+            self._import_legacy_txt()
+            self._migrate_bare_keys()
+        return self._conn
 
     @staticmethod
     def _migrate_key(key: str, rel_path: str) -> str:
@@ -91,6 +87,61 @@ class Archive:
         ext = Path(rel_path).suffix.lower().lstrip(".") if rel_path else ""
         suffix = "audio" if ext in _AUDIO_EXTS else "video"
         return f"{key}:{suffix}"
+
+    def _import_legacy_txt(self) -> None:
+        """One-time import of a pre-SQLite ``archive.txt`` ledger, then remove it.
+
+        Migrates bare ``site:id`` keys to mode-suffixed keys as it goes, so the
+        upgrade path is transparent and idempotent (the file is gone afterwards).
+        """
+        txt = self._legacy_txt
+        if not txt.exists():
+            return
+        assert self._conn is not None
+        for line in txt.read_text(encoding="utf-8").splitlines():
+            line = line.rstrip("\n")
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            key = parts[0].strip() if len(parts) > 0 else ""
+            requestor = parts[1].strip() if len(parts) > 1 else ""
+            ts = parts[2].strip() if len(parts) > 2 else ""
+            rel = parts[3].strip() if len(parts) > 3 else ""
+            if not key:
+                continue
+            nk = self._migrate_key(key, rel)
+            self._conn.execute(
+                "INSERT OR REPLACE INTO archive (key, requestor, ts, rel_path)"
+                " VALUES (?, ?, ?, ?)",
+                (nk, requestor, ts, rel),
+            )
+        self._conn.commit()
+        txt.unlink(missing_ok=True)
+
+    def _migrate_bare_keys(self) -> None:
+        """Rewrite any legacy bare ``site:id`` keys to mode-suffixed keys.
+
+        New writes are always mode-scoped (via :func:`dedupe_key`), so this only
+        ever touches keys written by pre-mode releases. Idempotent.
+        """
+        assert self._conn is not None
+        rows = self._conn.execute(
+            "SELECT key, requestor, ts, rel_path FROM archive"
+        ).fetchall()
+        changed = False
+        for key, requestor, ts, rel in rows:
+            nk = self._migrate_key(key, rel)
+            if nk == key:
+                continue
+            changed = True
+            self._conn.execute("DELETE FROM archive WHERE key = ?", (key,))
+            self._conn.execute(
+                "INSERT OR REPLACE INTO archive (key, requestor, ts, rel_path)"
+                " VALUES (?, ?, ?, ?)",
+                (nk, requestor, ts, rel),
+            )
+        if changed:
+            self._conn.commit()
 
     def contains(self, key: str) -> bool:
         """True iff the item is in the ledger AND its file still exists on disk.
@@ -101,12 +152,14 @@ class Archive:
         at download time (``rel_path``), resolved against ``data_dir`` (or used
         as-is when absolute).
         """
-        if self._cache is None:
-            self._reload()
-        entry = self._cache.get(key)  # type: ignore[union-attr]
-        if entry is None:
+        row = (
+            self._db()
+            .execute("SELECT rel_path FROM archive WHERE key = ?", (key,))
+            .fetchone()
+        )
+        if row is None:
             return False
-        rel = entry.rel_path
+        rel = row[0]
         if not rel:
             # Ledger present but no path recorded (shouldn't happen); trust it.
             return True
@@ -118,43 +171,36 @@ class Archive:
     def add(
         self, key: str, requestor: str, rel_path: str, ts: str | None = None
     ) -> None:
-        entries = self._reload()
-        ts = ts or _now_iso()
-        entry = ArchiveEntry(key, requestor, ts, rel_path)
-        entries[key] = entry
-        self._cache = entries
-        self._flush(entries)
+        conn = self._db()
+        conn.execute(
+            "INSERT OR REPLACE INTO archive (key, requestor, ts, rel_path)"
+            " VALUES (?, ?, ?, ?)",
+            (key, requestor, ts or _now_iso(), rel_path),
+        )
+        conn.commit()
 
     def remove_item(self, site: str, vid: str) -> int:
-        """Remove every ledger entry for one item — both the ``:video`` and the
+        """Remove every ledger row for one item — both the ``:video`` and the
         ``:audio`` slot — used by the library delete flow. Once the item's files
         are gone its slots must be free, so a re-request starts a fresh download
-        (a manually-deleted file is re-downloadable). Returns how many entries
-        were removed (0 when the item had no ledger entry).
+        (a manually-deleted file is re-downloadable). Returns how many rows were
+        removed (0 when the item had no ledger entry).
         """
-        entries = self._reload()
-        removed = 0
-        for audio_only in (False, True):
-            if entries.pop(dedupe_key(site, vid, audio_only), None) is not None:
-                removed += 1
-        if removed:
-            self._cache = entries
-            self._flush(entries)
+        cur = self._db().execute(
+            "DELETE FROM archive WHERE key IN (?, ?)",
+            (dedupe_key(site, vid, False), dedupe_key(site, vid, True)),
+        )
+        removed = cur.rowcount
+        self._db().commit()
         return removed
 
-    def _flush(self, entries: dict[str, ArchiveEntry]) -> None:
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        lines = [
-            f"{e.key}\t{e.requestor}\t{e.ts}\t{e.rel_path}" for e in entries.values()
-        ]
-        tmp = self.path.with_suffix(".txt.tmp")
-        tmp.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-        tmp.replace(self.path)
-
     def entries(self) -> list[ArchiveEntry]:
-        if self._cache is None:
-            self._reload()
-        return list(self._cache.values())  # type: ignore[arg-type]
+        rows = (
+            self._db()
+            .execute("SELECT key, requestor, ts, rel_path FROM archive ORDER BY key")
+            .fetchall()
+        )
+        return [ArchiveEntry(k, r, t, rel) for k, r, t, rel in rows]
 
 
 @dataclass
