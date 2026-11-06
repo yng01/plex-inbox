@@ -24,9 +24,10 @@ a JSON sidecar, all audio tracks embedded, and dedupe so nothing downloads twice
 | `bot/config.py` | Load + validate config from env (`.env`). |
 | `bot/main.py` | Entry point: build the PTB `Application`, wire base URLs, wait for the Bot API server, start polling. |
 | `bot/handlers.py` | All Telegram command/message handlers: menu, add-by-URL, `on_video`, queue/library/stats views, `on_video` download path. |
-| `bot/i18n.py` | **All** user-facing strings, in 8 languages (`LANGS`: en, ar, tr, es, ru, fr, de, pt). `t(lang, key, **kw)` renders. |
-| `bot/settings.py` | Per-user download defaults (audio mode, quality, auto-download); JSON on the data volume, keyed by user id. |
+| `bot/i18n.py` | **All** user-facing strings, in 8 languages (`LANGS`: en, ar, tr, es, ru, fr, de, pt). `t(lang, key, **kw)` renders; `LanguageStore` (per-user language). |
+| `bot/settings.py` | Per-user download defaults (audio mode, quality, auto-download); SQLite (`settings` table), keyed by user id. |
 | `bot/probe.py` | Probe a URL with yt-dlp → `UrlInfo` (title, id, entries, audio tracks, …). |
+| `bot/db.py` | Shared SQLite database (`plexinbox.db`): `connect()`/`db_path()` helpers. |
 | `bot/store.py` | `Archive` (dedupe ledger), `Library` (browse sidecars), `Stats`. |
 | `bot/plex.py` | `sanitize_filename`, NFO/sidecar writers, poster/thumbnail selection + download. |
 | `bot/ytdlp.py` | `DownloadManager`, `Job`, process spawner, progress parsing, concurrency, cleanup. |
@@ -97,7 +98,7 @@ bot-download cap no longer applies.
    subprocess or network error.
 
 3. **Dedupe = ledger AND file present.** `Archive.contains(key)` returns true only if
-   the item is in `archive.db` (SQLite) **and** its on-disk file (the path recorded
+   the item is in `plexinbox.db` (SQLite) **and** its on-disk file (the path recorded
    at download time) still exists. A manually-deleted file is therefore re-downloadable.
    Keep the two in step: write the ledger entry only after the file is on disk.
    **Keys are mode-scoped** (`store.dedupe_key(site, id, audio_only)`):

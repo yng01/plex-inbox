@@ -46,7 +46,7 @@ attributed to the person who requested it.
   browsable and every job — queued or downloading — is cancellable. Cancelling kills
   the process and removes its partial files (thumbnail, NFO, journals) without
   touching other videos in the same folder.
-- **No duplicates** — a global SQLite ledger (`archive.db`) means re-adding an already
+- **No duplicates** — a global SQLite ledger (`plexinbox.db`) means re-adding an already
   archived video is skipped with “already in your library”. The ledger is
   **mode-scoped** (`…:video` / `…:audio`), so the video and the audio-only
   version of the same item are independent: you can have one without the other,
@@ -165,9 +165,8 @@ shortcuts to the same screens.
 
 ```
 data/
-├── archive.db                       # dedupe ledger (SQLite): one row per item,
-│                                    #   key = <site>:<id>:video | <site>:<id>:audio
-├── langs.json                       # per-user language preferences
+├── plexinbox.db                     # SQLite: archive ledger + per-user settings/language
+│                                    #   (tables: archive, settings, langs)
 └── YouTube/
     └── Cool Channel/
         ├── poster.jpg               # channel avatar (once per channel)

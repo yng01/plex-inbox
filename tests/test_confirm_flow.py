@@ -51,8 +51,8 @@ def make_env(tmp_path):
     )
     svc = handlers.Services(
         config=cfg,
-        lang_store=open_store(str(tmp_path / "langs.json"), "en"),
-        settings_store=SettingsStore(tmp_path / "settings.json"),
+        lang_store=open_store(cfg.data_dir, "en"),
+        settings_store=SettingsStore(cfg.data_dir),
         probe_spawner=object(),
         archive=archive,
         library=Library(cfg.data_dir),

@@ -1,11 +1,12 @@
 """Deduplication archive + library browsing + stats.
 
-``archive.db`` is the dedupe ledger — a SQLite table with one row per downloaded
-item, keyed by ``<site>:<id>:<mode>`` where ``<mode>`` is ``video`` or ``audio``.
-Video and audio-only downloads of the same item are independent entries — each can
-be skipped, removed and re-downloaded on its own. The rich per-item record lives in
-the on-disk sidecar ``<id>.info.json`` (written by ``plex.py``), which is the
-source of truth for the library browser and the stats views.
+``plexinbox.db`` is the shared SQLite database; its ``archive`` table is the dedupe
+ledger (one row per downloaded item, keyed by ``<site>:<id>:<mode>`` where ``<mode>``
+is ``video`` or ``audio``). Video and audio-only downloads of the same item are
+independent entries — each can be skipped, removed and re-downloaded on its own. The
+rich per-item record lives in the on-disk sidecar ``<id>.info.json`` (written by
+``plex.py``), which is the source of truth for the library browser and the stats
+views.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
+from .db import connect, db_path
 
 #: Extensions that mark an on-disk file as an *audio-only* download. Used to
 #: classify legacy ledger entries (pre-mode keys) during migration. Keep in
@@ -47,7 +50,7 @@ class ArchiveEntry:
 
 
 class Archive:
-    """Dedupe ledger, persisted in SQLite (``archive.db``) on the data volume.
+    """Dedupe ledger, persisted in the shared SQLite database (``plexinbox.db``).
 
     One row per downloaded item, keyed by the mode-scoped ``<site>:<id>:<mode>``
     key. The on-disk ``<id>.info.json`` sidecar stays the source of truth for the
@@ -57,15 +60,15 @@ class Archive:
 
     def __init__(self, data_dir: str | Path):
         self.data_dir = Path(data_dir)
-        self.path = self.data_dir / "archive.db"
+        self.path = db_path(data_dir)
         self._legacy_txt = self.data_dir / "archive.txt"
+        self._legacy_db = self.data_dir / "archive.db"
         self._conn: sqlite3.Connection | None = None
 
     def _db(self) -> sqlite3.Connection:
         """Open (once) and prepare the database, importing any legacy ledger."""
         if self._conn is None:
-            self.data_dir.mkdir(parents=True, exist_ok=True)
-            conn = sqlite3.connect(str(self.path))
+            conn = connect(self.data_dir)
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS archive ("
                 " key TEXT PRIMARY KEY,"
@@ -76,6 +79,7 @@ class Archive:
             )
             conn.commit()
             self._conn = conn
+            self._import_legacy_db()
             self._import_legacy_txt()
             self._migrate_bare_keys()
         return self._conn
@@ -87,6 +91,39 @@ class Archive:
         ext = Path(rel_path).suffix.lower().lstrip(".") if rel_path else ""
         suffix = "audio" if ext in _AUDIO_EXTS else "video"
         return f"{key}:{suffix}"
+
+    def _import_legacy_db(self) -> None:
+        """Copy a pre-consolidation ``archive.db`` into the shared DB, then remove it.
+
+        Before settings/languages moved into ``plexinbox.db``, the archive lived in
+        its own ``archive.db`` file. Migrate that table into the shared database so
+        nothing is lost on upgrade. Idempotent: the file is gone afterwards.
+        """
+        legacy = self._legacy_db
+        if not legacy.exists():
+            return
+        assert self._conn is not None
+        try:
+            legacy_conn = sqlite3.connect(str(legacy))
+        except sqlite3.Error:
+            return  # unreadable file; leave it alone
+        try:
+            rows = legacy_conn.execute(
+                "SELECT key, requestor, ts, rel_path FROM archive"
+            ).fetchall()
+        except sqlite3.Error:
+            rows = []  # not a SQLite DB, or no archive table
+        finally:
+            legacy_conn.close()
+        if not rows:
+            return
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO archive (key, requestor, ts, rel_path)"
+            " VALUES (?, ?, ?, ?)",
+            rows,
+        )
+        self._conn.commit()
+        legacy.unlink(missing_ok=True)
 
     def _import_legacy_txt(self) -> None:
         """One-time import of a pre-SQLite ``archive.txt`` ledger, then remove it.

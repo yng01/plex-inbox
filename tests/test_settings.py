@@ -42,47 +42,57 @@ UID = 111
 
 
 def test_unknown_user_gets_defaults(tmp_path):
-    st = SettingsStore(tmp_path / "settings.json")
+    st = SettingsStore(tmp_path)
     assert st.get(999) == UserSettings(
         audio_mode="orig", quality=None, auto_download=False
     )
 
 
 def test_setters_persist_across_reload(tmp_path):
-    path = tmp_path / "settings.json"
-    st = SettingsStore(path)
+    st = SettingsStore(tmp_path)
     st.set_audio_mode(UID, "audio")
     st.set_quality(UID, 720)
     st.set_auto_download(UID, True)
 
-    again = SettingsStore(path)
+    again = SettingsStore(tmp_path)
     s = again.get(UID)
     assert (s.audio_mode, s.quality, s.auto_download) == ("audio", 720, True)
 
 
 def test_corrupt_file_falls_back_to_defaults_and_still_writes(tmp_path):
-    path = tmp_path / "settings.json"
-    path.write_text("{not json", encoding="utf-8")
-    st = SettingsStore(path)
+    (tmp_path / "settings.json").write_text("{not json", encoding="utf-8")
+    st = SettingsStore(tmp_path)
     assert st.get(UID) == UserSettings()
     st.set_auto_download(UID, True)
-    assert SettingsStore(path).get(UID).auto_download is True
+    assert SettingsStore(tmp_path).get(UID).auto_download is True
 
 
 def test_stale_quality_falls_back_to_best(tmp_path):
-    path = tmp_path / "settings.json"
-    path.write_text(
+    (tmp_path / "settings.json").write_text(
         json.dumps({str(UID): {"quality": 576, "audio_mode": "all"}}),
         encoding="utf-8",
     )
-    st = SettingsStore(path)
+    st = SettingsStore(tmp_path)
     s = st.get(UID)
     assert s.quality is None
     assert s.audio_mode == "all"
 
 
+def test_settings_imports_legacy_json(tmp_path):
+    (tmp_path / "settings.json").write_text(
+        json.dumps(
+            {str(UID): {"audio_mode": "audio", "quality": 720, "auto_download": True}}
+        ),
+        encoding="utf-8",
+    )
+    st = SettingsStore(tmp_path)
+    s = st.get(UID)
+    assert (s.audio_mode, s.quality, s.auto_download) == ("audio", 720, True)
+    assert not (tmp_path / "settings.json").exists()
+
+
 def test_invalid_values_rejected(tmp_path):
-    st = SettingsStore(tmp_path / "settings.json")
+    st = SettingsStore(tmp_path)
     with pytest.raises(ValueError):
         st.set_audio_mode(UID, "nope")
     with pytest.raises(ValueError):

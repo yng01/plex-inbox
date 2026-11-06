@@ -2,6 +2,8 @@
 ledger and the on-disk file. A manually-deleted video is no longer "archived",
 so re-requesting it re-downloads instead of skipping (the user's report)."""
 
+import sqlite3
+
 from bot.store import Archive, dedupe_key
 
 
@@ -119,7 +121,7 @@ def test_legacy_bare_key_with_audio_file_migrates_to_audio_slot(tmp_path):
 
 
 def test_imports_legacy_txt_ledger(tmp_path):
-    """A pre-SQLite archive.txt is imported (and mode-migrated) into archive.db."""
+    """A pre-SQLite archive.txt is imported (and mode-migrated) into plexinbox.db."""
     (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
     (tmp_path / "YouTube" / "Chan" / "abc.mkv").write_bytes(b"x" * 16)
     (tmp_path / "archive.txt").write_text(
@@ -133,7 +135,31 @@ def test_imports_legacy_txt_ledger(tmp_path):
     assert not a.contains("YouTube:abc")
     # the legacy file is consumed so the import never re-runs
     assert not (tmp_path / "archive.txt").exists()
-    assert (tmp_path / "archive.db").exists()
+    assert (tmp_path / "plexinbox.db").exists()
+
+
+def test_imports_legacy_archive_db(tmp_path):
+    """A pre-consolidation archive.db is copied into the shared plexinbox.db."""
+    (tmp_path / "YouTube" / "Chan").mkdir(parents=True)
+    (tmp_path / "YouTube" / "Chan" / "abc.mkv").write_bytes(b"x" * 16)
+    conn = sqlite3.connect(str(tmp_path / "archive.db"))
+    conn.execute(
+        "CREATE TABLE archive (key TEXT PRIMARY KEY,"
+        " requestor TEXT NOT NULL DEFAULT '',"
+        " ts TEXT NOT NULL DEFAULT '', rel_path TEXT NOT NULL DEFAULT '')"
+    )
+    conn.execute(
+        "INSERT INTO archive VALUES (?, ?, ?, ?)",
+        ("YouTube:abc:video", "ali", "2024-01-01T00:00:00Z", "YouTube/Chan/abc.mkv"),
+    )
+    conn.commit()
+    conn.close()
+
+    a = Archive(tmp_path)
+
+    assert a.contains("YouTube:abc:video")
+    assert not (tmp_path / "archive.db").exists()
+    assert (tmp_path / "plexinbox.db").exists()
 
 
 def test_remove_item_clears_both_mode_slots(tmp_path):

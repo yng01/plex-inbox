@@ -60,8 +60,8 @@ def build_services(
     manager = DownloadManager(config, archive, http=http)
     return handlers.Services(
         config=config,
-        lang_store=open_store(data_dir / "langs.json", config.default_lang),
-        settings_store=SettingsStore(data_dir / "settings.json"),
+        lang_store=open_store(data_dir, config.default_lang),
+        settings_store=SettingsStore(data_dir),
         probe_spawner=RealProbeSpawner(),
         archive=archive,
         library=Library(data_dir),

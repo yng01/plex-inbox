@@ -56,22 +56,28 @@ def test_user_display_prefers_username():
 
 
 def test_language_store_roundtrip_and_default(tmp_path):
-    p = tmp_path / "langs.json"
-    store = LanguageStore(path=p, default="en")
+    store = LanguageStore(tmp_path, default="en")
     assert store.get(1) == "en"
     store.set(1, "ar")
     assert store.get(1) == "ar"
     assert store.get(2) == "en"
-    # persistence
-    again = LanguageStore(path=p, default="en")
+    # persistence: a fresh store over the same data dir reads the saved value
+    again = LanguageStore(tmp_path, default="en")
     assert again.get(1) == "ar"
-    assert p.exists()
 
 
 def test_language_store_detect_maps_region_codes(tmp_path):
-    store = LanguageStore(path=tmp_path / "langs.json", default="en")
+    store = LanguageStore(tmp_path, default="en")
     assert store.detect("pt-BR") == "pt"
     assert store.detect("es-ES") == "es"
     assert store.detect("ar") == "ar"
     assert store.detect("zh-Hans") == "en"  # unsupported -> default
     assert store.detect(None) == "en"
+
+
+def test_language_store_imports_legacy_json(tmp_path):
+    (tmp_path / "langs.json").write_text('{"111": "tr"}', encoding="utf-8")
+    store = LanguageStore(tmp_path, default="en")
+    assert store.get(111) == "tr"
+    assert store.get(222) == "en"
+    assert not (tmp_path / "langs.json").exists()

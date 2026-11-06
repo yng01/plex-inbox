@@ -12,8 +12,11 @@ Nothing in the handlers hardcodes user-facing text — they all call :func:`t`.
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
+
+from .db import connect
 
 LANGS: tuple[str, ...] = ("en", "ar", "tr", "es", "ru", "fr", "de", "pt")
 FALLBACK_LANG = "en"
@@ -1117,43 +1120,74 @@ def user_display(username: str | None, user_id: int) -> str:
 
 
 class LanguageStore:
-    """Per-user language preference, persisted as JSON on the data volume."""
+    """Per-user language preference, persisted in the shared SQLite database."""
 
-    def __init__(self, path: Path, default: str = "en"):
-        self.path = Path(path)
+    def __init__(self, data_dir: str | Path, default: str = "en"):
+        self.data_dir = Path(data_dir)
         self.default = default if default in LANGS else "en"
-        self._data: dict[str, str] = {}
-        self._load()
+        self._legacy_json = self.data_dir / "langs.json"
+        self._conn: sqlite3.Connection | None = None
 
-    def _load(self) -> None:
+    def _db(self) -> sqlite3.Connection:
+        if self._conn is None:
+            conn = connect(self.data_dir)
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS langs ("
+                " user_id TEXT PRIMARY KEY,"
+                " lang TEXT NOT NULL"
+                ")"
+            )
+            conn.commit()
+            self._conn = conn
+            self._import_legacy_json()
+        return self._conn
+
+    def _import_legacy_json(self) -> None:
+        """One-time import of a pre-SQLite ``langs.json`` file, then remove it."""
+        legacy = self._legacy_json
+        if not legacy.exists():
+            return
         try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                self._data = {str(k): v for k, v in raw.items() if v in LANGS}
+            raw = json.loads(legacy.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            self._data = {}
+            return  # corrupt -> leave it, fall back to defaults
+        if not isinstance(raw, dict):
+            return
+        assert self._conn is not None
+        for k, v in raw.items():
+            if v in LANGS:
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO langs (user_id, lang) VALUES (?, ?)",
+                    (str(k), v),
+                )
+        self._conn.commit()
+        legacy.unlink(missing_ok=True)
 
     def is_set(self, user_id: int) -> bool:
-        return str(user_id) in self._data
+        row = (
+            self._db()
+            .execute("SELECT 1 FROM langs WHERE user_id = ?", (str(user_id),))
+            .fetchone()
+        )
+        return row is not None
 
     def get(self, user_id: int) -> str:
-        return self._data.get(str(user_id), self.default)
+        row = (
+            self._db()
+            .execute("SELECT lang FROM langs WHERE user_id = ?", (str(user_id),))
+            .fetchone()
+        )
+        return row[0] if row else self.default
 
     def set(self, user_id: int, lang: str) -> None:
         if lang not in LANGS:
             raise ValueError(f"Invalid language: {lang!r}")
-        self._data[str(user_id)] = lang
-        self._save()
-
-    def _save(self) -> None:
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text(
-                json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-        except OSError:
-            # Language persistence is best-effort; never crash the bot over it.
-            pass
+        conn = self._db()
+        conn.execute(
+            "INSERT OR REPLACE INTO langs (user_id, lang) VALUES (?, ?)",
+            (str(user_id), lang),
+        )
+        conn.commit()
 
     def detect(self, client_lang: str | None) -> str:
         """Map a Telegram client language code to our supported set.
@@ -1170,17 +1204,13 @@ class LanguageStore:
         return self.default
 
 
-def _default_store_path(data_dir: Path) -> Path:
-    return Path(data_dir) / "langs.json"
-
-
 def make_store(data_dir: str | Path, default: str = "en") -> LanguageStore:
-    return LanguageStore(_default_store_path(Path(data_dir)), default)
+    return LanguageStore(data_dir, default)
 
 
 # Re-exported so tests can import a single helper for a fresh store.
-def open_store(path: Path, default: str = "en") -> LanguageStore:
-    return LanguageStore(path, default)
+def open_store(data_dir: str | Path, default: str = "en") -> LanguageStore:
+    return LanguageStore(data_dir, default)
 
 
 # Silence unused-import lint for Mapping (kept for type documentation parity).
