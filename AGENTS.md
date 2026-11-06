@@ -36,7 +36,7 @@ a JSON sidecar, all audio tracks embedded, and dedupe so nothing downloads twice
 | `ruff.toml` | Canonical lint/format rule set (also mirrored to `~/.config/ruff/ruff.toml`). |
 | `Dockerfile` | One self-contained image: Python 3.12 + ffmpeg + yt-dlp + PTB. |
 | `docker-compose.yml` | `bot`, `bot-api` (profile `local-api`), `test` services. |
-| `.github/workflows/docker.yml` | CI: ruff check + format check, run tests, then build + push multi-arch image to GHCR. |
+| `.github/workflows/docker.yml` | CI: ruff check + format check, run tests, then build + push multi-arch image to GHCR with `:latest`/short-sha/`v*` semver tags. |
 
 ## Running tests
 
