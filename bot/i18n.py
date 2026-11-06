@@ -236,8 +236,8 @@ STRINGS: dict[str, dict[str, str]] = {
     "lang_en": {"en": "English", "ar": "English"},
     "lang_ar": {"en": "العربية", "ar": "العربية"},
     "lang_set": {
-        "en": "✅ Language set to {lang}.",
-        "ar": "✅ تم ضبط اللغة على {lang}.",
+        "en": "✅ Language set to {name}.",
+        "ar": "✅ تم ضبط اللغة على {name}.",
     },
 
     # --- Settings (per-user default download options) ---

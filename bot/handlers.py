@@ -171,13 +171,17 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             # fall through and (re)send a fresh menu, then remember the new id
             context.chat_data.pop("menu_msg_id", None)
 
-    if update.callback_query:
-        cq = update.callback_query
-        await cq.edit_message_text(text, reply_markup=kb)
-        context.chat_data["menu_msg_id"] = cq.message.message_id
+    # A back-to-menu tap arrives from a sub-screen whose keyboard is *inline*,
+    # and Telegram refuses to switch such a message to a reply keyboard
+    # (BadRequest: "Inline keyboard expected"). So the fallback always sends a
+    # fresh menu message — it never edits the tapped sub-screen in place.
+    if update.callback_query and update.callback_query.message:
+        msg = await update.callback_query.message.reply_text(text, reply_markup=kb)
     elif update.effective_message:
         msg = await update.effective_message.reply_text(text, reply_markup=kb)
-        context.chat_data["menu_msg_id"] = msg.message_id
+    else:
+        msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
+    context.chat_data["menu_msg_id"] = msg.message_id
 
 
 # --- add flow ---------------------------------------------------------------
@@ -1115,7 +1119,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if data in ("lang_en", "lang_ar"):
             code = data.split("_", 1)[1]
             s.lang_store.set(user_id(update), code)
-            await _reply(update, context, "lang_set", lang=code)
+            # confirm with the language's *display name*. Keep the kwarg off
+            # t()'s own parameter names (``lang``/``key``) — passing ``lang=``
+            # collided with the positional language argument (TypeError).
+            name = t(code, f"lang_{code}")
+            await _reply(update, context, "lang_set", name=name)
             return
 
         # fallback -> menu

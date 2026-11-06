@@ -10,6 +10,8 @@
   screen in either language.
 """
 
+from telegram import InlineKeyboardMarkup, ReplyKeyboardMarkup
+
 from bot import handlers
 from bot.i18n import t
 
@@ -129,3 +131,55 @@ async def test_plain_text_that_is_not_menu_or_url_still_rejected(tmp_path):
     upd = _text_update("hello there")
     await handlers.on_text(upd, ctx)
     assert t("en", "not_a_url") in upd.effective_message.replies
+
+
+async def test_back_to_menu_from_inline_screen_sends_fresh_menu(tmp_path):
+    """Live regression: a back-tap arrives from a sub-screen that has an
+    *inline* keyboard, and Telegram refuses to edit such a message to a reply
+    keyboard ("Inline keyboard expected"). With no canonical menu message
+    remembered yet (fresh bot start), the menu must be (re)sent fresh — never
+    as an edit of the tapped screen, never as an error.
+    """
+    cfg, svc, ctx = make_env(tmp_path)
+    # open the language screen — an inline-keyboard message — and remember
+    # nothing else (chat_data is empty, as right after a restart)
+    upd = _text_update(t("en", "menu_lang"))
+    await handlers.on_text(upd, ctx)
+    screen = upd.effective_message.last_reply
+    assert screen is not None
+    assert isinstance(screen.keyboard, InlineKeyboardMarkup)
+    assert "menu_msg_id" not in ctx.chat_data
+
+    await handlers.on_callback(
+        FakeUpdate(
+            user=FakeUser(),
+            callback_query=FakeCallbackQuery(data="mmenu", message=screen),
+        ),
+        ctx,
+    )
+
+    # the tapped screen was left untouched (no refused edit, no error text)
+    assert screen.edits == []
+    assert t("en", "error_generic") not in screen.replies
+    # the menu came back as a FRESH message carrying the reply keyboard, and
+    # its id is now the canonical one
+    menu = screen.last_reply
+    assert menu is not None
+    assert screen.replies == [t("en", "menu_title")]
+    assert isinstance(menu.keyboard, ReplyKeyboardMarkup)
+    assert ctx.chat_data["menu_msg_id"] == menu.message_id
+
+
+async def test_stored_id_on_an_inline_message_is_discarded_and_resent(tmp_path):
+    """A remembered menu id pointing at an inline-keyboard message (leftover
+    from a run before the menu became a reply keyboard) is dropped and the
+    menu re-sent fresh — the refused edit must not surface as an error."""
+    cfg, svc, ctx = make_env(tmp_path)
+    ctx.bot.keyboards[7] = InlineKeyboardMarkup([])
+    ctx.chat_data["menu_msg_id"] = 7
+
+    upd = _text_update("/menu")
+    await handlers.cmd_menu(upd, ctx)
+
+    assert ctx.chat_data["menu_msg_id"] == 2
+    assert upd.effective_message.replies == [t("en", "menu_title")]

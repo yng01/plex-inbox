@@ -354,3 +354,31 @@ async def test_url_probe_error_edits_probing_message(tmp_path):
     status = msg.last_reply
     assert status.edits[-1] == t("en", "error_probe_private")
     assert msg.replies == [t("en", "probing")]
+
+
+# --- language screen ----------------------------------------------------------
+
+
+async def test_lang_button_switches_to_arabic_and_confirms(tmp_path):
+    """Tapping a language button sets it and confirms in place (regression:
+    the ``lang=`` kwarg collided with ``t()``'s own ``lang`` parameter)."""
+    cfg, svc, ctx = make_env(tmp_path)
+    cq, upd = _callback("lang_ar")
+
+    await handlers.on_callback(upd, ctx)
+
+    assert svc.lang_store.get(111) == "ar"
+    # confirmed on the tapped message, in the newly chosen language, naming
+    # the language by its display name
+    assert cq.message.edits[-1] == t("ar", "lang_set", name=t("ar", "lang_ar"))
+    assert t("ar", "error_generic") not in cq.message.replies
+
+
+async def test_lang_button_switches_to_english_and_confirms(tmp_path):
+    cfg, svc, ctx = make_env(tmp_path)
+    cq, upd = _callback("lang_en")
+
+    await handlers.on_callback(upd, ctx)
+
+    assert svc.lang_store.get(111) == "en"
+    assert cq.message.edits[-1] == t("en", "lang_set", name=t("en", "lang_en"))

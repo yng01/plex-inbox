@@ -140,7 +140,7 @@ class FakeUser:
 
 
 class FakeMessage:
-    def __init__(self, text=None, id=1, video=None, video_note=None):
+    def __init__(self, text=None, id=1, video=None, video_note=None, keyboard=None):
         self.text = text
         self.message_id = id
         self.video = video
@@ -150,16 +150,30 @@ class FakeMessage:
         # the ``reply_markup`` kwarg of each edit (``None`` = kept the old one)
         self.edit_markups: list[object | None] = []
         self.last_reply: "FakeMessage | None" = None
+        # the keyboard currently attached to this message
+        self.keyboard: object | None = keyboard
 
     async def reply_text(self, text, **kw):
         self.replies.append(text)
-        reply = FakeMessage(id=self.message_id + 1)
+        reply = FakeMessage(id=self.message_id + 1, keyboard=kw.get("reply_markup"))
         self.last_reply = reply
         return reply
 
     async def edit_text(self, text, **kw):
+        new_kb = kw.get("reply_markup")
+        # Telegram refuses to switch a message between an inline keyboard and a
+        # reply keyboard once it has been sent (BadRequest: "Inline keyboard
+        # expected") — mirror that so tests catch it
+        if (
+            self.keyboard is not None
+            and new_kb is not None
+            and type(self.keyboard) is not type(new_kb)
+        ):
+            raise Exception("Bad Request: Inline keyboard expected")
+        if new_kb is not None:
+            self.keyboard = new_kb
         self.edits.append(text)
-        self.edit_markups.append(kw.get("reply_markup"))
+        self.edit_markups.append(new_kb)
 
 
 class FakeVideo:
@@ -230,14 +244,31 @@ class FakeVideoNote(FakeVideo):
 class FakeBot:
     def __init__(self):
         self.edits: list[tuple[int, int, str, object | None]] = []
+        self.sents: list[tuple[int, str, object | None]] = []
         # ids that no longer exist (deleted / "too old to edit") -> raise,
         # mirroring the Telegram server's BadRequest on edit_message_text
         self.missing_ids: set[int] = set()
+        # message_id -> keyboard currently attached (same switch rule as the
+        # server: an inline-keyboard message cannot be edited to a reply one)
+        self.keyboards: dict[int, object] = {}
+
+    async def send_message(self, chat_id, text, **kw):
+        kb = kw.get("reply_markup")
+        msg = FakeMessage(id=1000 + len(self.sents), text=text, keyboard=kb)
+        self.sents.append((chat_id, text, kb))
+        self.keyboards[msg.message_id] = kb
+        return msg
 
     async def edit_message_text(self, chat_id, message_id, text, **kw):
         if message_id in self.missing_ids:
             raise Exception("Bad Request: message to edit not found")
-        self.edits.append((chat_id, message_id, text, kw.get("reply_markup")))
+        new_kb = kw.get("reply_markup")
+        cur = self.keyboards.get(message_id)
+        if cur is not None and new_kb is not None and type(cur) is not type(new_kb):
+            raise Exception("Bad Request: Inline keyboard expected")
+        if new_kb is not None:
+            self.keyboards[message_id] = new_kb
+        self.edits.append((chat_id, message_id, text, new_kb))
         return True
 
 
