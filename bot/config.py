@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .i18n import LANGS
+
 
 class ConfigError(Exception):
     """Raised when the environment does not describe a valid configuration."""
@@ -124,8 +126,10 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
     data_dir_raw = (e.get("DATA_DIR") or "/data").strip() or "/data"
 
     default_lang = (e.get("DEFAULT_LANG") or "en").strip().lower()
-    if default_lang not in {"en", "ar"}:
-        raise ConfigError(f"DEFAULT_LANG must be 'en' or 'ar', got {default_lang!r}")
+    if default_lang not in LANGS:
+        raise ConfigError(
+            f"DEFAULT_LANG must be one of {', '.join(LANGS)}, got {default_lang!r}"
+        )
 
     plex_url = (e.get("PLEX_URL") or "").strip() or None
     plex_token = (e.get("PLEX_TOKEN") or "").strip() or None

@@ -1,15 +1,14 @@
 from pathlib import Path
 
-from bot.i18n import STRINGS, LanguageStore, t, user_display
+from bot.i18n import LANGS, STRINGS, LanguageStore, t, user_display
 
 
-def test_every_key_has_both_languages():
+def test_every_key_has_every_language():
     assert STRINGS, "STRINGS must not be empty"
     for key, val in STRINGS.items():
-        assert "en" in val, f"missing en for {key}"
-        assert "ar" in val, f"missing ar for {key}"
-        assert val["en"].strip(), f"empty en for {key}"
-        assert val["ar"].strip(), f"empty ar for {key}"
+        for lang in LANGS:
+            assert lang in val, f"missing {lang} for {key}"
+            assert val[lang].strip(), f"empty {lang} for {key}"
 
 
 def test_all_known_keys_are_defined():
@@ -67,3 +66,12 @@ def test_language_store_roundtrip_and_default(tmp_path):
     again = LanguageStore(path=p, default="en")
     assert again.get(1) == "ar"
     assert p.exists()
+
+
+def test_language_store_detect_maps_region_codes(tmp_path):
+    store = LanguageStore(path=tmp_path / "langs.json", default="en")
+    assert store.detect("pt-BR") == "pt"
+    assert store.detect("es-ES") == "es"
+    assert store.detect("ar") == "ar"
+    assert store.detect("zh-Hans") == "en"  # unsupported -> default
+    assert store.detect(None) == "en"

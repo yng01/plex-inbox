@@ -394,3 +394,14 @@ async def test_lang_button_switches_to_english_and_confirms(tmp_path):
 
     assert svc.lang_store.get(111) == "en"
     assert cq.message.edits[-1] == t("en", "lang_set", name=t("en", "lang_en"))
+
+
+async def test_lang_button_switches_to_turkish_and_confirms(tmp_path):
+    cfg, svc, ctx = make_env(tmp_path)
+    cq, upd = _callback("lang_tr")
+
+    await handlers.on_callback(upd, ctx)
+
+    assert svc.lang_store.get(111) == "tr"
+    assert cq.message.edits[-1] == t("tr", "lang_set", name=t("tr", "lang_tr"))
+    assert t("tr", "error_generic") not in cq.message.replies

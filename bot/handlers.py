@@ -36,7 +36,7 @@ from telegram.ext import (
 from . import plex
 from . import probe as probe_mod
 from .config import Config
-from .i18n import LanguageStore, t, user_display
+from .i18n import LANGS, LanguageStore, t, user_display
 from .probe import Entry, ProbeError, UrlInfo
 from .settings import AUDIO_MODES, QUALITIES, SettingsStore
 from .store import Archive, Library, Stats, dedupe_key
@@ -147,10 +147,10 @@ def main_menu_reply_keyboard(lang: str) -> ReplyKeyboardMarkup:
 
 
 # A reply-keyboard button arrives as the label it was shown with, in whatever
-# language the menu was rendered in. Map both languages' labels to an action so
+# language the menu was rendered in. Map every language's labels to an action so
 # a tap is routed correctly no matter when the user last switched language.
 _MENU_LABELS: dict[str, str] = {}
-for _lang in ("en", "ar"):
+for _lang in LANGS:
     _MENU_LABELS[t(_lang, "menu_add")] = "add"
     _MENU_LABELS[t(_lang, "menu_queue")] = "queue"
     _MENU_LABELS[t(_lang, "menu_library")] = "library"
@@ -1095,14 +1095,11 @@ async def render_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def render_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     svc(context)
     lang = lang_for(context, update)
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(t(lang, "lang_en"), callback_data="lang_en"),
-                InlineKeyboardButton(t(lang, "lang_ar"), callback_data="lang_ar"),
-            ],
-        ]
-    )
+    buttons = [
+        InlineKeyboardButton(t(lang, f"lang_{code}"), callback_data=f"lang_{code}")
+        for code in LANGS
+    ]
+    kb = InlineKeyboardMarkup([buttons[i : i + 2] for i in range(0, len(buttons), 2)])
     text = t(lang, "lang_title")
     if update.callback_query:
         await update.callback_query.edit_message_text(text, reply_markup=kb)
@@ -1366,8 +1363,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
         # language
-        if data in ("lang_en", "lang_ar"):
-            code = data.split("_", 1)[1]
+        if data.startswith("lang_"):
+            code = data[len("lang_") :]
+            if code not in LANGS:
+                await cmd_menu(update, context)
+                return
             s.lang_store.set(user_id(update), code)
             # The persistent menu (canonical message + sticky reply-keyboard
             # bar) must follow the new language, otherwise it keeps showing the

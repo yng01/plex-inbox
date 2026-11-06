@@ -13,6 +13,7 @@ def test_defaults():
     assert c.update_check_hours == 24.0
     assert c.write_nfo is True
     assert c.default_lang == "en"
+    assert load_config({**BASE, "DEFAULT_LANG": "tr"}).default_lang == "tr"
     assert c.debug_access is False
     assert c.video_format is None
     assert c.bot_api_base_url is None
@@ -50,7 +51,7 @@ def test_whitelist_invalid():
     with pytest.raises(ConfigError):
         load_config({**BASE, "MULTI_AUDIO": "maybe"})
     with pytest.raises(ConfigError):
-        load_config({**BASE, "DEFAULT_LANG": "fr"})
+        load_config({**BASE, "DEFAULT_LANG": "xx"})
     with pytest.raises(ConfigError):
         load_config({**BASE, "PLEX_URL": "plex://nope"})
     with pytest.raises(ConfigError):

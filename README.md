@@ -62,8 +62,9 @@ attributed to the person who requested it.
   newer release exists. Because each download spawns a fresh `yt-dlp` process, the new
   version applies to the next download with no restart. A failed upgrade never blocks
   or crashes the bot; it keeps the old version and retries next cycle.
-- **Bilingual** — full English + Arabic UI; per-user language is auto-detected,
-  overridable with **Language** / `/lang`, and persisted per user.
+- **Multilingual** — UI in English, Arabic, Turkish, Spanish, Russian, French, German,
+  and Portuguese; per-user language is auto-detected (incl. region codes like
+  `pt-BR`), overridable with **Language** / `/lang`, and persisted per user.
 - **Whitelist** — `ALLOWED_USER_IDS` restricts who may use the bot; unknown users are
   dropped silently (or told their ID with `DEBUG_ACCESS=1`).
 
@@ -251,7 +252,7 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
 docker compose run --rm --build test   # full pytest suite, no network/token needed
 ```
 
-The suite covers i18n completeness (EN/AR parity), config parsing, probe parsing
+The suite covers i18n completeness (every language in `LANGS` for every key), config parsing, probe parsing
 with canned `yt-dlp -J` fixtures (including multi-audio), naming/Plex metadata,
 format-selection, the full download state machine with a fake subprocess
 (queued → downloading → done / failed / cancelled, partial-file cleanup,

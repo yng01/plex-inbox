@@ -24,7 +24,7 @@ a JSON sidecar, all audio tracks embedded, and dedupe so nothing downloads twice
 | `bot/config.py` | Load + validate config from env (`.env`). |
 | `bot/main.py` | Entry point: build the PTB `Application`, wire base URLs, wait for the Bot API server, start polling. |
 | `bot/handlers.py` | All Telegram command/message handlers: menu, add-by-URL, `on_video`, queue/library/stats views, `on_video` download path. |
-| `bot/i18n.py` | **All** user-facing strings, EN + AR. `t(lang, key, **kw)` renders. |
+| `bot/i18n.py` | **All** user-facing strings, in 8 languages (`LANGS`: en, ar, tr, es, ru, fr, de, pt). `t(lang, key, **kw)` renders. |
 | `bot/settings.py` | Per-user download defaults (audio mode, quality, auto-download); JSON on the data volume, keyed by user id. |
 | `bot/probe.py` | Probe a URL with yt-dlp → `UrlInfo` (title, id, entries, audio tracks, …). |
 | `bot/store.py` | `Archive` (dedupe ledger), `Library` (browse sidecars), `Stats`. |
@@ -83,12 +83,13 @@ bot-download cap no longer applies.
 
 ## Invariants — do not break these
 
-1. **i18n parity.** Every user-facing string lives in `bot/i18n.py` `STRINGS` as
-   `{en, ar}`. Handlers never hardcode user-visible text — they call `t(...)`.
-   `tests/test_i18n.py` enforces (a) every key has a non-empty `en` **and** `ar`, and
-   (b) every `t("…")` key used in the code is defined. **Adding a new message means
-   adding both languages** or the suite fails. Unknown language falls back to `en`;
-   an unknown key raises `KeyError` (a loud bug, by design).
+1. **i18n parity.** Every user-facing string lives in `bot/i18n.py` `STRINGS` with a
+   value for every language in `LANGS`. Handlers never hardcode user-visible text —
+   they call `t(...)`. `tests/test_i18n.py` enforces (a) every key has a non-empty
+   value for **each** language, and (b) every `t("…")` key used in the code is
+   defined. **Adding a new message means adding every language** or the suite fails.
+   Unknown language falls back to `en`; an unknown key raises `KeyError` (a loud
+   bug, by design).
 
 2. **Never crash on one bad item.** A single failing probe, download, or metadata
    step must fail *that* job (with a friendly localized message) and let the rest of
@@ -111,7 +112,8 @@ bot-download cap no longer applies.
    `file_unique_id`, …). Title/description stay in the NFO + `.info.json` sidecar for
    Plex. `sanitize_filename("")` → `"untitled"`.
 
-5. **Button-first, bilingual UI.** Prefer buttons over typed input; keep EN/AR parity.
+5. **Button-first, multilingual UI.** Prefer buttons over typed input; keep parity
+   across every language in `LANGS`.
    The **main menu is a reply-keyboard** (sticky, always visible above the input)
    rendered by `cmd_menu`, which edits ONE canonical menu message per chat in
    place (`context.chat_data["menu_msg_id"]`) so repeats never duplicate; a
@@ -149,7 +151,7 @@ bot-download cap no longer applies.
 - **Identity:** the project is `plex-inbox`; the Python logger is `plexinbox`. The
   strings `yt-dlp` that remain in code/docs refer to the *tool*, not the project.
 - **Language:** code, comments, and this file are in English; the product UI is
-  English + Arabic.
+  English, Arabic, Turkish, Spanish, Russian, French, German, and Portuguese.
 
 ## When you change behavior
 
