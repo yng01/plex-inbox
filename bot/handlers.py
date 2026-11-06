@@ -107,9 +107,20 @@ def allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return False
 
 
-async def _answer(q: Update) -> None:
+async def _answer(update: Update, text: str | None = None) -> None:
+    """Answer a callback query so the client's spinner clears.
+
+    A callback that is never answered keeps the button's spinner spinning, which
+    reads as "no response" even when the bot's work was a no-op (e.g. "go to menu"
+    while the menu is already open). Optionally carries a short ``text`` — shown
+    by the client as a brief toast — so a no-op tap still reads as a reply.
+    Never raises: an already-answered or stale callback is simply ignored.
+    """
+    cq = update.callback_query
+    if cq is None:
+        return
     try:
-        await q.callback_query.answer()
+        await cq.answer(text=text)
     except Exception:
         pass
 
@@ -157,6 +168,13 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     place, and only when that message is gone (deleted, or too old to edit) is a
     fresh one sent and remembered. The reply keyboard itself is sticky, so once
     installed the menu stays pinned and visible without being re-sent.
+
+    A repeat in the *same* language is a no-op: the canonical message already
+    shows exactly this menu, so an in-place edit would be refused (400 "message is
+    not modified") and a fresh send would duplicate it. We confirm instead — a
+    brief callback toast for a button tap, a short reply for typed text — rather
+    than resending. (The sticky reply-keyboard bar is already open above the
+    input, so the menu is right there either way.)
     """
     if not allowed(update, context):
         return
@@ -167,14 +185,28 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = chat.id if chat is not None else None
 
     stored = context.chat_data.get("menu_msg_id") if chat_id is not None else None
+    if stored is not None and context.chat_data.get("menu_rendered_lang") == lang:
+        # The canonical menu already shows exactly this language's menu — confirm
+        # without resending (see docstring).
+        note = L(context, update, "menu_here")
+        if update.callback_query is not None:
+            await _answer(update, text=note)
+        elif update.effective_message is not None:
+            await update.effective_message.reply_text(note)
+        return
+
     if stored is not None:
         try:
             await context.bot.edit_message_text(chat_id, stored, text, reply_markup=kb)
+            context.chat_data["menu_rendered_lang"] = lang
             return
-        except Exception:
-            # the remembered message is gone (deleted / "message is too old") —
-            # fall through and (re)send a fresh menu, then remember the new id
+        except Exception as exc:
+            # the remembered message is gone (deleted / "message is too old") or
+            # the edit was refused — log it (it was silent before) and fall
+            # through to (re)send a fresh menu, then remember the new id
+            log.info("menu edit of message %s failed, re-sending: %s", stored, exc)
             context.chat_data.pop("menu_msg_id", None)
+            context.chat_data.pop("menu_rendered_lang", None)
 
     # A back-to-menu tap arrives from a sub-screen whose keyboard is *inline*,
     # and Telegram refuses to switch such a message to a reply keyboard
@@ -187,6 +219,7 @@ async def cmd_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         msg = await context.bot.send_message(chat_id, text, reply_markup=kb)
     context.chat_data["menu_msg_id"] = msg.message_id
+    context.chat_data["menu_rendered_lang"] = lang
 
 
 # --- add flow ---------------------------------------------------------------
@@ -1030,6 +1063,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     s = svc(context)
     q = update.callback_query
     data = q.data or ""
+    # Answer the tap up front so the button's spinner ALWAYS clears — even on a
+    # branch whose work is a no-op (e.g. back-to-menu while the menu is already
+    # open). A specific branch may answer again with a confirmation toast; that
+    # second answer is harmless (already-answered callbacks are ignored server-side).
+    await _answer(update)
 
     try:
         if data == "mmenu" or data.startswith("unknown"):

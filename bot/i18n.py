@@ -46,6 +46,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "en": "🌐 Language",
         "ar": "🌐 اللغة",
     },
+    # Shown when "go to menu" is tapped/sent while the menu is already open in
+    # this language: the canonical message already shows it, so we confirm rather
+    # than resend. Doubles as a brief callback toast — kept under 64 bytes, which
+    # is the hard limit for answerCallbackQuery text (the AR version fits).
+    "menu_here": {
+        "en": "Menu is already open (pinned above your keyboard)",
+        "ar": "القائمة مفتوحة بالفعل",
+    },
 
     # --- Add flow ---
     "add_prompt": {

@@ -251,23 +251,35 @@ class FakeBot:
         # message_id -> keyboard currently attached (same switch rule as the
         # server: an inline-keyboard message cannot be edited to a reply one)
         self.keyboards: dict[int, object] = {}
+        # message_id -> current text, so an edit to identical content can be
+        # refused, as the server does (400 "message is not modified")
+        self.texts: dict[int, str] = {}
 
     async def send_message(self, chat_id, text, **kw):
         kb = kw.get("reply_markup")
         msg = FakeMessage(id=1000 + len(self.sents), text=text, keyboard=kb)
         self.sents.append((chat_id, text, kb))
         self.keyboards[msg.message_id] = kb
+        self.texts[msg.message_id] = text
         return msg
 
     async def edit_message_text(self, chat_id, message_id, text, **kw):
         if message_id in self.missing_ids:
             raise Exception("Bad Request: message to edit not found")
         new_kb = kw.get("reply_markup")
-        cur = self.keyboards.get(message_id)
-        if cur is not None and new_kb is not None and type(cur) is not type(new_kb):
+        cur_kb = self.keyboards.get(message_id)
+        cur_text = self.texts.get(message_id)
+        # identical content (same text, keyboard unchanged) -> the server
+        # refuses the edit (400 "message is not modified")
+        if cur_text == text and (
+            new_kb is None or cur_kb is None or type(cur_kb) is type(new_kb)
+        ):
+            raise Exception("Bad Request: message is not modified")
+        if cur_kb is not None and new_kb is not None and type(cur_kb) is not type(new_kb):
             raise Exception("Bad Request: Inline keyboard expected")
         if new_kb is not None:
             self.keyboards[message_id] = new_kb
+        self.texts[message_id] = text
         self.edits.append((chat_id, message_id, text, new_kb))
         return True
 
@@ -277,9 +289,13 @@ class FakeCallbackQuery:
         self.data = data
         self.message = message or FakeMessage()
         self.answered = 0
+        # the ``text`` of each answer (``None`` = plain, no toast) — so tests can
+        # assert a no-op tap was confirmed (e.g. "menu is already open")
+        self.answer_texts: list[str | None] = []
 
-    def answer(self, text=None):
+    def answer(self, text=None, show_alert=False):
         self.answered += 1
+        self.answer_texts.append(text)
 
     async def edit_message_text(self, text, **kw):
         await self.message.edit_text(text, **kw)

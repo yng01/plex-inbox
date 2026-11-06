@@ -32,18 +32,20 @@ async def test_first_menu_sends_and_remembers(tmp_path):
     assert ctx.chat_data["menu_msg_id"] == 2
 
 
-async def test_repeat_menu_edits_in_place_not_duplicated(tmp_path):
-    cfg, svc, ctx = make_env(tmp_path)
-    await handlers.cmd_menu(_text_update("/menu"), ctx)
-    stored = ctx.chat_data["menu_msg_id"]
+async def test_repeat_menu_same_language_confirms_without_resending(tmp_path):
+    """A repeat ``/menu`` in the SAME language must confirm, not re-edit.
 
-    await handlers.cmd_menu(_text_update("/menu"), ctx)
-    # the SAME message id is edited — no second menu message, no new reply
-    assert ctx.chat_data["menu_msg_id"] == stored
-    assert ctx.bot.edits[-1][1] == stored
-    assert ctx.bot.edits[-1][2] == t("en", "menu_title")
-    # the reply keyboard is (re)applied on the edit
-    kb = ctx.bot.edits[-1][3]
+    The canonical message already shows exactly this menu, so an in-place edit
+    is refused by the server (400 "message is not modified") and a fresh send
+    would duplicate it. The sticky reply-keyboard bar is still up, so the menu
+    is right there — we confirm instead of resending.
+    """
+    cfg, svc, ctx = make_env(tmp_path)
+    first = _text_update("/menu")
+    await handlers.cmd_menu(first, ctx)
+    stored = ctx.chat_data["menu_msg_id"]
+    # sanity: the reply keyboard shipped on the first (fresh) send
+    kb = first.effective_message.last_reply.keyboard
     assert kb is not None
     labels = [b.text for row in kb.keyboard for b in row]
     for key in (
@@ -56,10 +58,22 @@ async def test_repeat_menu_edits_in_place_not_duplicated(tmp_path):
     ):
         assert t("en", key) in labels, f"{key} missing from reply keyboard"
 
+    # a same-language repeat: confirmed, no edit, no duplicate menu message
+    upd = _text_update("/menu")
+    await handlers.cmd_menu(upd, ctx)
+    assert ctx.chat_data["menu_msg_id"] == stored
+    assert ctx.bot.edits == []
+    # the repeat confirmed rather than re-sending the menu title
+    assert t("en", "menu_here") in upd.effective_message.replies
+    assert upd.effective_message.replies.count(t("en", "menu_title")) == 0
 
-async def test_back_to_menu_tap_edits_canonical_message(tmp_path):
+
+async def test_back_to_menu_tap_confirms_when_menu_already_open(tmp_path):
+    """Tapping "back to menu" while the sticky menu bar is already up must
+    confirm (and clear the spinner) — never resend a duplicate or attempt a
+    refused in-place edit of the canonical message."""
     cfg, svc, ctx = make_env(tmp_path)
-    # establish the canonical menu message (id 2)
+    # establish the canonical menu message (id 2), open in the user's language
     await handlers.cmd_menu(_text_update("/menu"), ctx)
     stored = ctx.chat_data["menu_msg_id"]
 
@@ -70,20 +84,46 @@ async def test_back_to_menu_tap_edits_canonical_message(tmp_path):
     assert screen is not None
     assert t("en", "no_jobs") in upd.effective_message.replies
 
-    # user taps the "back to menu" button on that screen -> the menu must come
-    # back on the SAME canonical message, not as a brand-new message
-    await handlers.on_callback(
-        FakeUpdate(
-            user=FakeUser(),
-            callback_query=FakeCallbackQuery(data="mmenu", message=screen),
-        ),
-        ctx,
-    )
-    # edited the stored canonical message (not a fresh send)
-    assert ctx.bot.edits[-1][1] == stored
-    assert ctx.bot.edits[-1][2] == t("en", "menu_title")
-    # the remembered id is unchanged — still one canonical menu message
+    # user taps the "back to menu" button on that screen
+    cq = FakeCallbackQuery(data="mmenu", message=screen)
+    await handlers.on_callback(FakeUpdate(user=FakeUser(), callback_query=cq), ctx)
+    # the callback was answered (spinner cleared) with the "already open" note
+    assert cq.answered >= 1
+    assert t("en", "menu_here") in cq.answer_texts
+    # no in-place edit, no duplicate menu message, remembered id unchanged
     assert ctx.chat_data["menu_msg_id"] == stored
+    assert ctx.bot.edits == []
+    assert screen.replies == []
+
+
+async def test_mmenu_tap_from_every_sub_screen_confirms(tmp_path):
+    """The "📺 Video Archive" (mmenu) button lives on the Queue, Language and
+    Settings sub-screens. Tapping it while the sticky menu bar is already up
+    must confirm on every one of them — never a refused in-place edit, a
+    duplicate menu message, or a silently-spinning callback (the reported
+    "clicking Video Archive, no reply")."""
+    for label_key in ("menu_queue", "menu_lang", "menu_settings"):
+        cfg, svc, ctx = make_env(tmp_path)
+        # the menu bar is already open, in the user's language
+        await handlers.cmd_menu(_text_update("/menu"), ctx)
+        stored = ctx.chat_data["menu_msg_id"]
+        assert ctx.chat_data.get("menu_rendered_lang") == "en"
+
+        # open the sub-screen (its inline keyboard carries the mmenu button)
+        open_upd = _text_update(t("en", label_key))
+        await handlers.on_text(open_upd, ctx)
+        screen = open_upd.effective_message.last_reply
+        assert screen is not None
+
+        # tap the "📺 Video Archive" button on that screen
+        cq = FakeCallbackQuery(data="mmenu", message=screen)
+        await handlers.on_callback(FakeUpdate(user=FakeUser(), callback_query=cq), ctx)
+
+        # answered (spinner cleared) + confirmed; no edit, no duplicate
+        assert cq.answered >= 1
+        assert t("en", "menu_here") in cq.answer_texts
+        assert ctx.chat_data["menu_msg_id"] == stored
+        assert ctx.bot.edits == []
 
 
 async def test_menu_resends_when_stored_message_is_gone(tmp_path):
@@ -201,9 +241,10 @@ async def test_menu_title_text_reopens_menu_both_languages(tmp_path):
         assert ctx.chat_data.get("menu_msg_id") is not None
 
 
-async def test_menu_title_repeat_edits_canonical_message(tmp_path):
-    """Tapping the title when the menu is already open must re-open it on the
-    SAME canonical message — never a duplicate menu message."""
+async def test_menu_title_repeat_confirms_without_resending(tmp_path):
+    """Tapping/sending the title when the menu is already open in the same
+    language must confirm — never re-edit (a refused "message is not modified")
+    nor duplicate the menu message."""
     cfg, svc, ctx = make_env(tmp_path)
     await handlers.cmd_menu(_text_update("/menu"), ctx)
     stored = ctx.chat_data["menu_msg_id"]
@@ -212,8 +253,10 @@ async def test_menu_title_repeat_edits_canonical_message(tmp_path):
     await handlers.on_text(upd, ctx)
 
     assert ctx.chat_data["menu_msg_id"] == stored
-    assert ctx.bot.edits[-1][1] == stored
-    assert ctx.bot.edits[-1][2] == t("en", "menu_title")
+    assert ctx.bot.edits == []
+    # the repeat confirmed rather than re-sending the menu title
+    assert t("en", "menu_here") in upd.effective_message.replies
+    assert upd.effective_message.replies.count(t("en", "menu_title")) == 0
 
 
 async def test_language_switch_re_renders_persistent_menu(tmp_path):
