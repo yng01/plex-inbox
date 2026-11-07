@@ -91,6 +91,7 @@ class Config:
     allowed_user_ids: list[int] = field(default_factory=list)
     data_dir: Path = Path("/data")
     max_concurrent: int = 2
+    concurrent_fragments: int = 4
     multi_audio: bool = True
     auto_update: bool = True
     update_check_hours: float = 24.0
@@ -158,6 +159,9 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         allowed_user_ids=allowed,
         data_dir=Path(data_dir_raw).expanduser(),
         max_concurrent=_int(e.get("MAX_CONCURRENT"), "MAX_CONCURRENT", 2),
+        concurrent_fragments=_int(
+            e.get("CONCURRENT_FRAGMENTS"), "CONCURRENT_FRAGMENTS", 4
+        ),
         multi_audio=_flag(e.get("MULTI_AUDIO"), "MULTI_AUDIO", True),
         auto_update=_flag(e.get("AUTO_UPDATE"), "AUTO_UPDATE", True),
         update_check_hours=_float(

@@ -8,6 +8,7 @@ BASE = {"BOT_TOKEN": "123:abc", "ALLOWED_USER_IDS": "all"}
 def test_defaults():
     c = load_config(BASE)
     assert c.max_concurrent == 2
+    assert c.concurrent_fragments == 4
     assert c.multi_audio is True
     assert c.auto_update is True
     assert c.update_check_hours == 24.0
@@ -98,6 +99,7 @@ def test_values(tmp_path):
             **BASE,
             "DATA_DIR": str(tmp_path),
             "MAX_CONCURRENT": "5",
+            "CONCURRENT_FRAGMENTS": "8",
             "MULTI_AUDIO": "0",
             "AUTO_UPDATE": "0",
             "UPDATE_CHECK_HOURS": "12",
@@ -108,6 +110,7 @@ def test_values(tmp_path):
     )
     assert c.data_dir == tmp_path
     assert c.max_concurrent == 5
+    assert c.concurrent_fragments == 8
     assert c.multi_audio is False
     assert c.auto_update is False
     assert c.update_check_hours == 12.0

@@ -36,7 +36,7 @@ from telegram.error import BadRequest
 from . import plex
 from .config import Config
 from .i18n import t
-from .probe import AudioTrack, UrlInfo
+from .probe import PLAYER_CLIENT_ARGS, AudioTrack, UrlInfo
 from .store import Archive, dedupe_key
 
 VIDEO_EXTS = {"mkv", "mp4", "webm", "mov", "m4v", "flv", "avi", "ogv", "ts"}
@@ -692,6 +692,9 @@ class DownloadManager:
             ),
             "--output",
             str(out),
+            "--concurrent-fragments",
+            str(self.config.concurrent_fragments),
+            *PLAYER_CLIENT_ARGS,
             *fmt,
             job.url,
         ]

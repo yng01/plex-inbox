@@ -209,6 +209,7 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
 | `DEBUG_ACCESS` | `0` | Reply not-allowed users with their numeric ID |
 | `DATA_DIR` | `/data` | Library root |
 | `MAX_CONCURRENT` | `2` | Parallel downloads; excess queues |
+| `CONCURRENT_FRAGMENTS` | `4` | Parallel HTTP fragments per download (speed) |
 | `MULTI_AUDIO` | `1` | Embed all audio tracks (MKV) when available |
 | `VIDEO_FORMAT` | — | Optional yt-dlp format override (wins over `MULTI_AUDIO`) |
 | `AUTO_UPDATE` | `1` | Auto-upgrade yt-dlp from PyPI |

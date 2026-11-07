@@ -244,7 +244,21 @@ def test_cmd_all_audio_mode_and_output(tmp_path):
     assert "-f" in cmd
     assert cmd[cmd.index("-f") + 1] == "bv*+mergeall[vcodec=none]"
     assert "--audio-multistreams" in cmd
+    # speed (parallel fragments) + android player-client fallback are always set
+    assert cmd[cmd.index("--concurrent-fragments") + 1] == "4"  # default
+    assert (
+        cmd[cmd.index("--extractor-args") + 1]
+        == "youtube:player_client=default,android"
+    )
     assert cmd[-1] == job.url
+
+
+def test_cmd_concurrent_fragments_from_config(tmp_path):
+    cfg = make_config(tmp_path, CONCURRENT_FRAGMENTS="8")
+    mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
+    job = mgr.enqueue(make_info(), requestor="ali", audio_mode="orig")
+    cmd = mgr._cmd(job)
+    assert cmd[cmd.index("--concurrent-fragments") + 1] == "8"
 
 
 def test_cmd_best_mode_omits_multistreams(tmp_path):

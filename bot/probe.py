@@ -18,6 +18,13 @@ from typing import Protocol
 
 DEFAULT_TIMEOUT = 60.0
 
+# YouTube's default ``web`` client reports some public videos (notably "Made for
+# Kids" uploads) as unavailable even though they are; the ``android`` client serves
+# them. Appending it as a fallback keeps the default clients' full quality while
+# making those links work. Shared with the download manager so probe and download
+# agree on the client set.
+PLAYER_CLIENT_ARGS = ("--extractor-args", "youtube:player_client=default,android")
+
 
 class ProbeError(Exception):
     """A user-classifiable probe failure.
@@ -317,6 +324,7 @@ async def run_probe(
         "20",
         "--retries",
         "2",
+        *PLAYER_CLIENT_ARGS,
         url,
     ]
     timed_out = False

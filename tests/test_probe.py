@@ -128,6 +128,10 @@ async def test_run_probe_success():
     info = await run_probe(sp, "https://youtube.com/watch?v=abc123")
     assert info.id == "abc123"
     assert sp.cmds and "-J" in sp.cmds[0]
+    # the android player-client fallback is in the probe command (fixes
+    # "Made for Kids" videos that the default web client reports unavailable)
+    assert "--extractor-args" in sp.cmds[0]
+    assert "youtube:player_client=default,android" in sp.cmds[0]
 
 
 async def test_run_probe_error_classification():
