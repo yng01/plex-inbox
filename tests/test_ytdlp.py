@@ -246,6 +246,9 @@ def test_cmd_all_audio_mode_and_output(tmp_path):
     assert "--audio-multistreams" in cmd
     # title is embedded in the file so Plex (home-videos library) shows it
     assert "--embed-metadata" in cmd
+    # channel (uploader) is embedded as genre, so Plex can group by it
+    assert "--parse-metadata" in cmd
+    assert cmd[cmd.index("--parse-metadata") + 1] == "uploader:genre"
     # speed (parallel fragments) + android player-client fallback are always set
     assert cmd[cmd.index("--concurrent-fragments") + 1] == "4"  # default
     assert (

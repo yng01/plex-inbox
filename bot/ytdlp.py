@@ -693,6 +693,8 @@ class DownloadManager:
             "--output",
             str(out),
             "--embed-metadata",
+            "--parse-metadata",
+            "uploader:genre",
             "--concurrent-fragments",
             str(self.config.concurrent_fragments),
             *PLAYER_CLIENT_ARGS,

@@ -191,9 +191,13 @@ Assets"** enabled (and "Prefer local metadata"). Plex then shows each video's re
 title (from the embedded tag) and uses `poster.jpg` for channel art and `<id>.jpg`
 for per-video thumbnails.
 
+The **channel (uploader) is embedded as `genre`**, so you can group by channel
+with a smart collection (`Genre is <channel>`); the **"Folders"** view also mirrors
+the on-disk `<site>/<channel>/` hierarchy directly.
+
 > The `.nfo` and `.info.json` files are also written, but Plex's home-videos
-> scanner doesn't read NFO natively — the embedded title is what drives the
-> displayed name.
+> scanner doesn't read NFO natively — the embedded title/genre is what drives the
+> displayed name and grouping.
 
 ## Plex: collections via tags
 

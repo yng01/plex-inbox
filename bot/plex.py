@@ -3,7 +3,7 @@
 Layout produced for each video (under ``<DATA_DIR>/<site>/<channel>/``)::
 
     <id>.mkv                the merged video (mkv carries multiple audio streams);
-                            title/year/date embedded in the file for Plex
+                            title/date embedded in the file, channel as genre
     <id>.jpg                thumbnail, stem matches the video (Plex hover/grid art)
     <id>.info.json          sidecar: requestor, timestamp, path, size, audio tracks
     <id>.nfo                Kodi/Plex NFO with <title>/<summary>/<year>/<genre>/<tags>
