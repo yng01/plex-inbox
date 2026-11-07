@@ -34,11 +34,11 @@ attributed to the person who requested it.
   message just becomes the job's progress message). Off (the default) means "ask me
   every time", with the saved values pre-filling the screen.
 - **Plex-ready on disk** — files are named after the item's own id (stable, never
-  collides), per-video thumbnail with a matching
-  stem, channel poster, and a Kodi-style NFO carrying `<title>`, `<summary>`,
-  `<year>`, `<genre>`, and lowercase single-line `<tags>`
-  (`site:youtube`, `channel:cool channel`, `requested:ali`, `audio:en`, `audio:ar`,
-  `year:2024`, `duration:6m12s`, `genre:documentary`, …).
+  collides), with the human title/date embedded in the file itself, plus a
+  per-video thumbnail with a matching stem, channel poster, and a Kodi-style NFO
+  carrying `<title>`, `<summary>`, `<year>`, `<genre>`, and lowercase single-line
+  `<tags>` (`site:youtube`, `channel:cool channel`, `requested:ali`, `audio:en`,
+  `audio:ar`, `year:2024`, `duration:6m12s`, `genre:documentary`, …).
 - **Live progress** — one status message per download, edited in place with % and
   speed (throttled), ending in ✅ done (path, size, audio-track count) or ⚠️ failed
   (short reason). One bad download never takes down the bot.
@@ -173,14 +173,27 @@ data/
         ├── jPjbMA0wvrI.mkv          # video, all audio streams embedded
         ├── jPjbMA0wvrI.m4a          # audio-only (independent slot; coexists)
         ├── jPjbMA0wvrI.jpg          # thumbnail, stem matches the video
-        ├── jPjbMA0wvrI.nfo          # Kodi/Plex metadata + tags (carries the title)
+        ├── jPjbMA0wvrI.nfo          # Kodi/Plex NFO + tags (title is also embedded in the file)
         └── jPjbMA0wvrI.info.json    # sidecar: requestor, date, path, size, audio tracks
 ```
 
 File names use the item's own id from the probe (sanitized) — the human-readable
-title lives in the NFO and sidecar, so Plex still shows the proper title. For
-videos you send to the bot directly, the id is the Telegram file id, which makes
-re-sending the same file a no-op.
+title is embedded in the media file (`--embed-metadata`) and also written to the
+NFO and sidecar, so Plex shows the proper title even though the file is id-named.
+For videos you send to the bot directly, the id is the Telegram file id, which
+makes re-sending the same file a no-op.
+
+## Plex: titles & artwork
+
+The title/date are embedded in each file, so the recommended setup is a
+**"Other Videos" (Home Videos)** library pointed at `./data`, with **"Local Media
+Assets"** enabled (and "Prefer local metadata"). Plex then shows each video's real
+title (from the embedded tag) and uses `poster.jpg` for channel art and `<id>.jpg`
+for per-video thumbnails.
+
+> The `.nfo` and `.info.json` files are also written, but Plex's home-videos
+> scanner doesn't read NFO natively — the embedded title is what drives the
+> displayed name.
 
 ## Plex: collections via tags
 

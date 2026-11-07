@@ -2,15 +2,18 @@
 
 Layout produced for each video (under ``<DATA_DIR>/<site>/<channel>/``)::
 
-    <id>.mkv                the merged video (mkv carries multiple audio streams)
+    <id>.mkv                the merged video (mkv carries multiple audio streams);
+                            title/year/date embedded in the file for Plex
     <id>.jpg                thumbnail, stem matches the video (Plex hover/grid art)
     <id>.info.json          sidecar: requestor, timestamp, path, size, audio tracks
     <id>.nfo                Kodi/Plex NFO with <title>/<summary>/<year>/<genre>/<tags>
     poster.jpg              channel artwork (once per channel folder)
 
 ``<id>`` is the item's own id from the probe (e.g. the YouTube video id; for an
-uploaded video file, its Telegram ``file_unique_id``). The human-readable title
-lives in the NFO and sidecar, so Plex still shows the proper title.
+uploaded video file, its Telegram ``file_unique_id``). The human-readable title is
+embedded in the media file itself (via ``--embed-metadata``) and also written to
+the NFO and sidecar, so Plex shows the proper title regardless of the id-based
+file name.
 
 Tags are the collection hook: lowercase, single-line, ``key:value`` so they are trivial
 to filter in Plex (``tag contains requested:ali123``). Because they are written to disk,

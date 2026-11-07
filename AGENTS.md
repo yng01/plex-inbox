@@ -118,8 +118,9 @@ bot-download cap no longer applies.
 
 4. **id-based on-disk names.** Files land at
    `<DATA_DIR>/<site>/<channel>/<id>.<ext>` (id = YouTube video id, Telegram
-   `file_unique_id`, …). Title/description stay in the NFO + `.info.json` sidecar for
-   Plex. `sanitize_filename("")` → `"untitled"`.
+   `file_unique_id`, …). The title is embedded in the file (`--embed-metadata`) and
+   also written to the NFO + `.info.json` sidecar, so Plex shows it regardless of
+   the id-based name. `sanitize_filename("")` → `"untitled"`.
 
 5. **Button-first, multilingual UI.** Prefer buttons over typed input; keep parity
    across every language in `LANGS`.

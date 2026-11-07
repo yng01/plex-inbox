@@ -244,6 +244,8 @@ def test_cmd_all_audio_mode_and_output(tmp_path):
     assert "-f" in cmd
     assert cmd[cmd.index("-f") + 1] == "bv*+mergeall[vcodec=none]"
     assert "--audio-multistreams" in cmd
+    # title is embedded in the file so Plex (home-videos library) shows it
+    assert "--embed-metadata" in cmd
     # speed (parallel fragments) + android player-client fallback are always set
     assert cmd[cmd.index("--concurrent-fragments") + 1] == "4"  # default
     assert (
