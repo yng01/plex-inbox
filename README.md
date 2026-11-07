@@ -120,18 +120,18 @@ docker run -d --name plex-inbox --restart unless-stopped \
   ghcr.io/<owner>/plex-inbox:latest
 ```
 
-or in compose:
+or, with the production compose file (recommended — adds `init`, log rotation,
+resource limits, and a liveness healthcheck):
 
-```yaml
-services:
-  bot:
-    image: ghcr.io/<owner>/plex-inbox:latest
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DATA_DIR: /data
-    volumes:
-      - ./data:/data
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+`docker-compose.prod.yml` defaults `IMAGE` to `ghcr.io/yunus-neg/plex-inbox:latest`.
+Override it (or pin a version tag) for your own fork:
+
+```bash
+IMAGE=ghcr.io/<owner>/plex-inbox:v1.2.3 docker compose -f docker-compose.prod.yml up -d
 ```
 
 The image is as private as the repository: pulling requires a GitHub token with

@@ -36,7 +36,8 @@ a JSON sidecar, all audio tracks embedded, and dedupe so nothing downloads twice
 | `conftest.py` | Makes the repo root importable (`import bot`) without installing. |
 | `ruff.toml` | Canonical lint/format rule set (also mirrored to `~/.config/ruff/ruff.toml`). |
 | `Dockerfile` | One self-contained image: Python 3.12 + ffmpeg + yt-dlp + PTB. |
-| `docker-compose.yml` | `bot`, `bot-api` (profile `local-api`), `test` services. |
+| `docker-compose.yml` | `bot`, `bot-api` (profile `local-api`), `test` services (dev/test). |
+| `docker-compose.prod.yml` | Production deployment: pulls the GHCR image, init + log rotation + resource limits + healthcheck. |
 | `.github/workflows/docker.yml` | CI: ruff check + format check, run tests, then build + push multi-arch image to GHCR with `:latest`/short-sha/`v*` semver tags. |
 
 ## Running tests
@@ -76,6 +77,13 @@ CI pins `ruff==0.17.4` and gates the image build on `ruff check` +
 cp .env.example .env          # set BOT_TOKEN + ALLOWED_USER_IDS
 docker compose up -d --build bot                                  # default: 20 MB file cap
 docker compose --profile local-api up -d --build bot              # any-size video files
+```
+
+Production (prebuilt GHCR image, no build — hardening + healthcheck):
+
+```bash
+docker compose -f docker-compose.prod.yml up -d                    # pulls ghcr.io/…/plex-inbox:latest
+docker compose -f docker-compose.prod.yml --profile local-api up -d  # + local Bot API server
 ```
 
 The `local-api` profile starts a local Bot API Server (official `--local` mode) that

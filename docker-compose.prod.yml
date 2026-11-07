@@ -1,0 +1,114 @@
+# plex-inbox — production deployment
+#
+# Pulls the CI-built image from GHCR (no local build) and runs the bot with
+# production hardening: init, log rotation, resource limits, and least-privilege
+# security. Plex on the host reads the bind-mounted data directory directly.
+#
+# Quick start:
+#   cp .env.example .env            # set BOT_TOKEN + ALLOWED_USER_IDS
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Pin a version instead of tracking :latest:
+#   IMAGE=ghcr.io/<you>/plex-inbox:v1.2.3 docker compose -f docker-compose.prod.yml up -d
+#
+# Large video files (any size) — opt-in local Bot API server:
+#   docker compose -f docker-compose.prod.yml --profile local-api up -d
+#   (needs TELEGRAM_API_ID / TELEGRAM_API_HASH / the two BASE_URL lines in .env)
+
+services:
+  # Local Bot API Server (official implementation, --local mode). getFile
+  # returns a *local* path, lifting the 20 MB cap on files a bot can receive.
+  # The bot mounts the same volume at the same path, so its download is a plain
+  # file copy. Opt-in via `--profile local-api`.
+  bot-api:
+    image: aiogram/telegram-bot-api:10.3
+    container_name: plex-inbox-api
+    restart: unless-stopped
+    init: true
+    profiles: ["local-api"]
+    environment:
+      # Free pair from https://my.telegram.org -> "API development tools"
+      # (empty in default mode is fine — this service is then profile-excluded)
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      TELEGRAM_WORK_DIR: /srv/telegram-bot-api
+      TELEGRAM_TEMP_DIR: /tmp
+      TELEGRAM_LOCAL: "1"
+      TELEGRAM_HTTP_PORT: "8081"
+    volumes:
+      - bot-api-data:/srv/telegram-bot-api
+    healthcheck:
+      # nc -z = "is the port listening" (the server returns 404 on /, so an
+      # HTTP healthcheck would always fail)
+      test: ["CMD", "nc", "-z", "127.0.0.1", "8081"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  bot:
+    image: ${IMAGE:-ghcr.io/yunus-neg/plex-inbox:latest}
+    container_name: plex-inbox
+    restart: unless-stopped
+    # Proper signal forwarding + zombie reaping for the yt-dlp/ffmpeg subprocesses.
+    init: true
+    # Always re-check for a newer image on `up -d` (correct for :latest).
+    pull_policy: always
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+      # Read-only view of bot-api's received files, at the exact path it reports
+      # in getFile responses — downloads become local copies (no-op when empty).
+      - bot-api-data:/srv/telegram-bot-api:ro
+    # Least-privilege: the bot only makes outbound connections and needs no
+    # capabilities. Not `read_only:` — the in-place yt-dlp auto-update writes to
+    # the user site-packages (set AUTO_UPDATE=0 to harden further).
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Liveness: is the `python -m bot` process still running? The bot exposes
+      # no HTTP endpoint (outbound-only), so this checks the process list instead
+      # of probing a port. `restart: unless-stopped` is the recovery mechanism.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import glob, sys
+          def bot_alive():
+              for p in glob.glob("/proc/[0-9]*/cmdline"):
+                  try:
+                      args = open(p, "rb").read().split(b"\0")
+                  except OSError:
+                      continue
+                  if b"-m" in args and b"bot" in args:
+                      return True
+              return False
+          sys.exit(0 if bot_alive() else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Optional bounds (tune to your host); generous defaults for ffmpeg/yt-dlp.
+    mem_limit: 1g
+    cpus: "2.0"
+    # No `ports:` on purpose — the bot only makes outbound connections
+    # (long polling + YouTube + PyPI + optional Plex refresh).
+
+volumes:
+  bot-api-data:
