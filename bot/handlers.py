@@ -25,6 +25,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
+from telegram.error import BadRequest
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -500,11 +501,15 @@ async def _render_confirm(
 
     text = "\n".join(lines)
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=markup)
+        # Re-tapping an already-selected quality re-renders identical content,
+        # which Telegram rejects with "Message is not modified" — treat as a no-op.
+        with contextlib.suppress(BadRequest):
+            await update.callback_query.edit_message_text(text, reply_markup=markup)
     elif status_msg is not None:
         # replace the "🔎 Fetching…" status message in place (a second message
         # would leave the status one dangling and looking stuck)
-        await status_msg.edit_text(text, reply_markup=markup)
+        with contextlib.suppress(BadRequest):
+            await status_msg.edit_text(text, reply_markup=markup)
     else:
         await update.effective_message.reply_text(text, reply_markup=markup)
 
@@ -1158,7 +1163,10 @@ async def render_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     markup = InlineKeyboardMarkup(rows)
     text = "\n".join(lines)
     if update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=markup)
+        # Re-tapping an already-selected option renders identical content, which
+        # Telegram rejects with "Message is not modified" — treat as a no-op.
+        with contextlib.suppress(BadRequest):
+            await update.callback_query.edit_message_text(text, reply_markup=markup)
     else:
         await update.effective_message.reply_text(text, reply_markup=markup)
 

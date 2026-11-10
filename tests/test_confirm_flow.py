@@ -405,3 +405,20 @@ async def test_lang_button_switches_to_turkish_and_confirms(tmp_path):
     assert svc.lang_store.get(111) == "tr"
     assert cq.message.edits[-1] == t("tr", "lang_set", name=t("tr", "lang_tr"))
     assert t("tr", "error_generic") not in cq.message.replies
+
+
+async def test_retapping_selected_quality_is_a_noop(tmp_path):
+    """Tapping the already-selected quality re-renders identical content, which
+    Telegram rejects with 'Message is not modified'; the handler tolerates it."""
+    cfg, svc, ctx = make_env(tmp_path)
+    ctx.user_data["pending"] = {"info": _video(), "quality": None}
+    cq, upd = _callback("qbest")
+
+    await handlers.on_callback(upd, ctx)
+    edits_before = len(cq.message.edits)
+
+    # identical re-render -> the fake raises "not modified"; the handler swallows it
+    await handlers.on_callback(upd, ctx)
+    assert len(cq.message.edits) == edits_before
+    # and, crucially, it doesn't fall through to the generic error path
+    assert t("en", "error_generic") not in cq.message.replies

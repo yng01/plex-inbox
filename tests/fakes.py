@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from telegram.error import BadRequest
+
 # --- ytdlp manager (``lines()``-style process) -------------------------------
 
 
@@ -140,6 +142,13 @@ class FakeUser:
         self.username = username
 
 
+def _kb_signature(kb: object | None) -> object:
+    """A comparable snapshot of a keyboard markup (by content, not identity)."""
+    if kb is None:
+        return None
+    return getattr(kb, "to_dict", lambda: str(kb))()
+
+
 class FakeMessage:
     def __init__(self, text=None, id=1, video=None, video_note=None, keyboard=None):
         self.text = text
@@ -153,6 +162,8 @@ class FakeMessage:
         self.last_reply: FakeMessage | None = None
         # the keyboard currently attached to this message
         self.keyboard: object | None = keyboard
+        # the message's current text (updated by edit_text) for "not modified"
+        self.current_text: str | None = text
 
     async def reply_text(self, text, **kw):
         self.replies.append(text)
@@ -170,9 +181,16 @@ class FakeMessage:
             and new_kb is not None
             and type(self.keyboard) is not type(new_kb)
         ):
-            raise Exception("Bad Request: Inline keyboard expected")
+            raise BadRequest("Bad Request: Inline keyboard expected")
+        # identical text + keyboard -> Telegram refuses the edit (400 "message is
+        # not modified") — mirror that so tests catch re-renders of no-op taps
+        if text == self.current_text and _kb_signature(new_kb) == _kb_signature(
+            self.keyboard
+        ):
+            raise BadRequest("Bad Request: message is not modified")
         if new_kb is not None:
             self.keyboard = new_kb
+        self.current_text = text
         self.edits.append(text)
         self.edit_markups.append(new_kb)
 
@@ -266,7 +284,7 @@ class FakeBot:
 
     async def edit_message_text(self, chat_id, message_id, text, **kw):
         if message_id in self.missing_ids:
-            raise Exception("Bad Request: message to edit not found")
+            raise BadRequest("Bad Request: message to edit not found")
         new_kb = kw.get("reply_markup")
         cur_kb = self.keyboards.get(message_id)
         cur_text = self.texts.get(message_id)
@@ -275,13 +293,13 @@ class FakeBot:
         if cur_text == text and (
             new_kb is None or cur_kb is None or type(cur_kb) is type(new_kb)
         ):
-            raise Exception("Bad Request: message is not modified")
+            raise BadRequest("Bad Request: message is not modified")
         if (
             cur_kb is not None
             and new_kb is not None
             and type(cur_kb) is not type(new_kb)
         ):
-            raise Exception("Bad Request: Inline keyboard expected")
+            raise BadRequest("Bad Request: Inline keyboard expected")
         if new_kb is not None:
             self.keyboards[message_id] = new_kb
         self.texts[message_id] = text
