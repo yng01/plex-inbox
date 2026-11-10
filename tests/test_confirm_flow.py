@@ -409,7 +409,7 @@ async def test_lang_button_switches_to_turkish_and_confirms(tmp_path):
 
 async def test_retapping_selected_quality_is_a_noop(tmp_path):
     """Re-tapping the already-selected quality is a no-op: it confirms via a
-    toast but doesn't re-render (a no-op edit Telegram would reject)."""
+    popup but doesn't re-render (a no-op edit Telegram would reject)."""
     cfg, svc, ctx = make_env(tmp_path)
     ctx.user_data["pending"] = {"info": _video(), "quality": None}
     cq, upd = _callback("qbest")
@@ -421,7 +421,8 @@ async def test_retapping_selected_quality_is_a_noop(tmp_path):
     assert len(cq.message.edits) == edits_before  # no redundant re-render
     # and, crucially, it doesn't fall through to the generic error path
     assert t("en", "error_generic") not in cq.message.replies
-    # it still gives feedback via a confirmation toast
+    # it still gives unmissable feedback via a popup confirmation
     assert cq.answer_texts and cq.answer_texts[-1] == t(
         "en", "settings_quality", label=t("en", "q_best")
     )
+    assert cq.answer_alerts and cq.answer_alerts[-1] is True

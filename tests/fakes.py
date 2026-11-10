@@ -315,10 +315,13 @@ class FakeCallbackQuery:
         # the ``text`` of each answer (``None`` = plain, no toast) — so tests can
         # assert a no-op tap was confirmed (e.g. "menu is already open")
         self.answer_texts: list[str | None] = []
+        # whether each answer requested a popup (``show_alert=True``)
+        self.answer_alerts: list[bool] = []
 
     def answer(self, text=None, show_alert=False):
         self.answered += 1
         self.answer_texts.append(text)
+        self.answer_alerts.append(show_alert)
 
     async def edit_message_text(self, text, **kw):
         await self.message.edit_text(text, **kw)

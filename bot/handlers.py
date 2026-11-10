@@ -109,20 +109,23 @@ def allowed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     return False
 
 
-async def _answer(update: Update, text: str | None = None) -> None:
+async def _answer(
+    update: Update, text: str | None = None, show_alert: bool = False
+) -> None:
     """Answer a callback query so the client's spinner clears.
 
     A callback that is never answered keeps the button's spinner spinning, which
     reads as "no response" even when the bot's work was a no-op (e.g. "go to menu"
     while the menu is already open). Optionally carries a short ``text`` — shown
-    by the client as a brief toast — so a no-op tap still reads as a reply.
+    by the client as a brief toast, or as a popup with ``show_alert`` — so a no-op
+    tap still reads as a reply.
     Never raises: an already-answered or stale callback is simply ignored.
     """
     cq = update.callback_query
     if cq is None:
         return
     with contextlib.suppress(Exception):
-        await cq.answer(text=text)
+        await cq.answer(text=text, show_alert=show_alert)
 
 
 # --- main menu --------------------------------------------------------------
@@ -1181,19 +1184,26 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     q = update.callback_query
     data = q.data or ""
     # Answer the tap up front so the button's spinner ALWAYS clears — even on a
-    # branch whose work is a no-op. A quality tap also confirms its selection
-    # with a brief toast, so re-tapping the already-selected quality still
-    # visibly responds instead of appearing to do nothing.
+    # branch whose work is a no-op. A quality tap on the already-selected value
+    # confirms with an unmissable popup (its re-render is skipped as a no-op, so
+    # the popup is the only visible response).
     toast = None
+    show_alert = False
     if data == "qbest":
-        lang = lang_for(context, update)
-        toast = t(lang, "settings_quality", label=_quality_label(lang, None))
+        pending = context.user_data.get("pending")
+        if pending is not None and pending.get("quality") is None:
+            lang = lang_for(context, update)
+            toast = t(lang, "settings_quality", label=_quality_label(lang, None))
+            show_alert = True
     elif data.startswith("q") and data[1:].isdigit():
         qval = int(data[1:])
         if qval in QUALITIES:
-            lang = lang_for(context, update)
-            toast = t(lang, "settings_quality", label=_quality_label(lang, qval))
-    await _answer(update, text=toast)
+            pending = context.user_data.get("pending")
+            if pending is not None and pending.get("quality") == qval:
+                lang = lang_for(context, update)
+                toast = t(lang, "settings_quality", label=_quality_label(lang, qval))
+                show_alert = True
+    await _answer(update, text=toast, show_alert=show_alert)
 
     try:
         if data == "mmenu" or data.startswith("unknown"):
