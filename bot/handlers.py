@@ -503,6 +503,8 @@ async def _render_confirm(
         markup = InlineKeyboardMarkup(rows)
 
     text = "\n".join(lines)
+    # remind the user that the quality row only selects; a Download button starts
+    text += f"\n\n{t(lang, 'confirm_hint')}"
     if update.callback_query:
         # Re-tapping an already-selected quality re-renders identical content,
         # which Telegram rejects with "Message is not modified" — treat as a no-op.

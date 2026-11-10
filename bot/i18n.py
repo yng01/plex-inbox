@@ -200,6 +200,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "de": "(eine Standardspur)",
         "pt": "(uma faixa padrão única)",
     },
+    "confirm_hint": {
+        "en": "Select a quality, then tap a ⬇️ Download button to start.",
+        "ar": "اختر الجودة ثم اضغط زر ⬇️ التحميل للبدء.",
+        "tr": "Bir kalite seçin, ardından başlatmak için ⬇️ İndir düğmesine dokunun.",
+        "es": "Elige una calidad y luego toca un botón ⬇️ Descargar para empezar.",
+        "ru": "Выберите качество, затем нажмите кнопку ⬇️ Скачать.",
+        "fr": "Choisissez une qualité, puis appuyez sur un bouton ⬇️ Télécharger.",
+        "de": "Wähle eine Qualität und tippe dann auf eine ⬇️ Herunterladen-Schaltfläche.",
+        "pt": "Escolha uma qualidade e toque em um botão ⬇️ Baixar.",
+    },
     "btn_download_all": {
         "en": "⬇️ Download (all audio)",
         "ar": "⬇️ تحميل (كل المسارات)",
