@@ -210,6 +210,16 @@ STRINGS: dict[str, dict[str, str]] = {
         "de": "Wähle eine Qualität und tippe dann auf eine ⬇️ Herunterladen-Schaltfläche.",
         "pt": "Escolha uma qualidade e toque em um botão ⬇️ Baixar.",
     },
+    "video_already_downloaded": {
+        "en": "✅ Video already in your library — you can still download the audio-only version.",
+        "ar": "✅ الفيديو موجود بالفعل في مكتبتك — يمكنك تنزيل النسخة الصوتية فقط.",
+        "tr": "✅ Video zaten kütüphanenizde — yine de yalnızca ses sürümünü indirebilirsiniz.",
+        "es": "✅ El video ya está en tu biblioteca — aún puedes descargar la versión solo audio.",
+        "ru": "✅ Видео уже в вашей библиотеке — вы всё ещё можете скачать версию только со звуком.",
+        "fr": "✅ La vidéo est déjà dans votre bibliothèque — vous pouvez encore télécharger la version audio seule.",
+        "de": "✅ Video bereits in deiner Bibliothek — du kannst weiterhin die Nur-Audio-Version herunterladen.",
+        "pt": "✅ O vídeo já está na sua biblioteca — você ainda pode baixar a versão somente áudio.",
+    },
     "btn_download_all": {
         "en": "⬇️ Download (all audio)",
         "ar": "⬇️ تحميل (كل المسارات)",

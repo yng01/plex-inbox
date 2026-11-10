@@ -473,6 +473,10 @@ async def _render_confirm(
         # downloaded mode would just report "skipped", so hide it instead
         video_done = s.archive.contains(dedupe_key(info.site, info.id, False))
         audio_done = s.archive.contains(dedupe_key(info.site, info.id, True))
+        if video_done and not audio_done:
+            # the video is already downloaded; only the audio-only version remains
+            lines.append("")
+            lines.append(t(lang, "video_already_downloaded"))
         rows = [_quality_row()]
         if not video_done:
             if s.config.multi_audio:
