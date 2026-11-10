@@ -127,7 +127,7 @@ resource limits, and a liveness healthcheck):
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-`docker-compose.prod.yml` defaults `IMAGE` to `ghcr.io/yunus-neg/plex-inbox:latest`.
+`docker-compose.prod.yml` defaults `IMAGE` to `ghcr.io/yng01/plex-inbox:latest`.
 Override it (or pin a version tag) for your own fork:
 
 ```bash

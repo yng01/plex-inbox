@@ -52,7 +52,7 @@ services:
         max-file: "3"
 
   bot:
-    image: ${IMAGE:-ghcr.io/yunus-neg/plex-inbox:latest}
+    image: ${IMAGE:-ghcr.io/yng01/plex-inbox:latest}
     container_name: plex-inbox
     restart: unless-stopped
     # Proper signal forwarding + zombie reaping for the yt-dlp/ffmpeg subprocesses.
