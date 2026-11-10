@@ -477,8 +477,10 @@ async def _render_confirm(
             # the video is already downloaded; only the audio-only version remains
             lines.append("")
             lines.append(t(lang, "video_already_downloaded"))
-        rows = [_quality_row()]
+        rows = []
         if not video_done:
+            # quality only caps the *video*; hide it when there's no video to fetch
+            rows.append(_quality_row())
             if s.config.multi_audio:
                 rows.append(
                     [

@@ -236,6 +236,28 @@ async def test_confirm_screen_hides_modes_already_in_library(tmp_path):
     assert "c" in buttons
 
 
+async def test_confirm_screen_hides_quality_when_video_archived(tmp_path):
+    """The quality row only caps the video, so it is hidden when the video is
+    already archived and only the audio-only version remains."""
+    cfg, svc, ctx = make_env(tmp_path)
+    rel = "YouTube/Cool Channel/abc123.mkv"
+    (cfg.data_dir / "YouTube" / "Cool Channel").mkdir(parents=True, exist_ok=True)
+    (cfg.data_dir / rel).write_bytes(b"vid")
+    svc.archive.add("YouTube:abc123:video", "ali", rel)
+
+    status = FakeMessage(text="Fetching…")
+    upd = FakeUpdate(
+        user=FakeUser(id=111, username="ali"), message=FakeMessage(text="url")
+    )
+    await handlers._render_confirm(upd, ctx, _video(), status_msg=status)
+
+    markup = status.edit_markups[-1]
+    buttons = [b.callback_data for row in markup.inline_keyboard for b in row]
+    assert "qbest" not in buttons  # quality row hidden (no video to fetch)
+    assert "ao" in buttons  # audio-only still offered
+    assert "c" in buttons
+
+
 async def test_confirm_screen_shows_all_buttons_when_library_empty(tmp_path):
     cfg, svc, ctx = make_env(tmp_path)
     status = FakeMessage(text="Fetching…")
@@ -247,6 +269,7 @@ async def test_confirm_screen_shows_all_buttons_when_library_empty(tmp_path):
     buttons = [
         b.callback_data for row in status.edit_markups[-1].inline_keyboard for b in row
     ]
+    assert "qbest" in buttons  # quality row shown (video available)
     assert "da" in buttons
     assert "db" in buttons
     assert "ao" in buttons
