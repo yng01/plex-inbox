@@ -1181,10 +1181,19 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     q = update.callback_query
     data = q.data or ""
     # Answer the tap up front so the button's spinner ALWAYS clears — even on a
-    # branch whose work is a no-op (e.g. back-to-menu while the menu is already
-    # open). A specific branch may answer again with a confirmation toast; that
-    # second answer is harmless (already-answered callbacks are ignored server-side).
-    await _answer(update)
+    # branch whose work is a no-op. A quality tap also confirms its selection
+    # with a brief toast, so re-tapping the already-selected quality still
+    # visibly responds instead of appearing to do nothing.
+    toast = None
+    if data == "qbest":
+        lang = lang_for(context, update)
+        toast = t(lang, "settings_quality", label=_quality_label(lang, None))
+    elif data.startswith("q") and data[1:].isdigit():
+        qval = int(data[1:])
+        if qval in QUALITIES:
+            lang = lang_for(context, update)
+            toast = t(lang, "settings_quality", label=_quality_label(lang, qval))
+    await _answer(update, text=toast)
 
     try:
         if data == "mmenu" or data.startswith("unknown"):
@@ -1215,14 +1224,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         # moves to the tapped button (the mode buttons then use this quality)
         if data == "qbest":
             pending = context.user_data.get("pending")
-            if pending is not None:
+            if pending is not None and pending.get("quality") is not None:
                 pending["quality"] = None
                 await _render_confirm(update, context, pending["info"])
             return
         if data.startswith("q") and data[1:].isdigit():
             pending = context.user_data.get("pending")
             qval = int(data[1:])
-            if pending is not None and qval in QUALITIES:
+            if (
+                pending is not None
+                and qval in QUALITIES
+                and pending.get("quality") != qval
+            ):
                 pending["quality"] = qval
                 await _render_confirm(update, context, pending["info"])
             return
@@ -1347,22 +1360,30 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await render_library(update, context)
             return
 
-        # settings changes (each re-renders the settings screen in place)
+        # settings changes (each re-renders the settings screen in place; a tap
+        # on the already-selected value is a no-op and only gets its spinner
+        # cleared, avoiding a "Message is not modified" edit)
         if data.startswith("sa_"):
             mode = data[3:]
             if mode in AUDIO_MODES:
-                s.settings_store.set_audio_mode(user_id(update), mode)
-                await render_settings(update, context)
+                st = s.settings_store.get(user_id(update))
+                if st.audio_mode != mode:
+                    s.settings_store.set_audio_mode(user_id(update), mode)
+                    await render_settings(update, context)
             return
         if data == "sqbest":
-            s.settings_store.set_quality(user_id(update), None)
-            await render_settings(update, context)
+            st = s.settings_store.get(user_id(update))
+            if st.quality is not None:
+                s.settings_store.set_quality(user_id(update), None)
+                await render_settings(update, context)
             return
         if data.startswith("sq") and data[2:].isdigit():
             qval = int(data[2:])
             if qval in QUALITIES:
-                s.settings_store.set_quality(user_id(update), qval)
-            await render_settings(update, context)
+                st = s.settings_store.get(user_id(update))
+                if st.quality != qval:
+                    s.settings_store.set_quality(user_id(update), qval)
+                    await render_settings(update, context)
             return
         if data == "sauto":
             cur = s.settings_store.get(user_id(update))
