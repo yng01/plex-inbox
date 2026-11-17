@@ -273,7 +273,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # show "probing", then replace with the confirm screen (or an error)
     status = await msg.reply_text(l10n(context, update, "probing"))
     try:
-        info = await probe_mod.run_probe(s.probe_spawner, url)
+        info = await probe_mod.run_probe(
+            s.probe_spawner, url, cookies_file=s.config.cookies_file
+        )
     except ProbeError as e:
         key = {
             "unsupported": "error_probe_unsupported",

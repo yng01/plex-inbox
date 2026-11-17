@@ -311,6 +311,7 @@ async def run_probe(
     url: str,
     ytdlp_bin: str = "yt-dlp",
     timeout: float = DEFAULT_TIMEOUT,
+    cookies_file: str | None = None,
 ) -> UrlInfo:
     """Run ``yt-dlp -J <url>`` and parse the JSON into a :class:`UrlInfo`.
 
@@ -325,8 +326,10 @@ async def run_probe(
         "--retries",
         "2",
         *PLAYER_CLIENT_ARGS,
-        url,
     ]
+    if cookies_file:
+        cmd += ["--cookies", cookies_file]
+    cmd.append(url)
     timed_out = False
     stdout = b""
     stderr = b""

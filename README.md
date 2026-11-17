@@ -229,6 +229,7 @@ All configuration is via environment variables (see [`.env.example`](.env.exampl
 | `CONCURRENT_FRAGMENTS` | `4` | Parallel HTTP fragments per download (speed) |
 | `MULTI_AUDIO` | `1` | Embed all audio tracks (MKV) when available |
 | `VIDEO_FORMAT` | — | Optional yt-dlp format override (wins over `MULTI_AUDIO`) |
+| `COOKIES_FILE` | — | Optional path (in-container) to a `cookies.txt` so YouTube serves full/HD formats for restricted & "Made for Kids" videos |
 | `AUTO_UPDATE` | `1` | Auto-upgrade yt-dlp from PyPI |
 | `UPDATE_CHECK_HOURS` | `24` | Minimum hours between PyPI checks |
 | `WRITE_NFO` | `1` | Write NFO + sidecar JSON per video |

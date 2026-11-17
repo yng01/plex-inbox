@@ -17,6 +17,7 @@ def test_defaults():
     assert load_config({**BASE, "DEFAULT_LANG": "tr"}).default_lang == "tr"
     assert c.debug_access is False
     assert c.video_format is None
+    assert c.cookies_file is None
     assert c.bot_api_base_url is None
     assert c.bot_api_base_file_url is None
     assert c.open_access is True
@@ -106,6 +107,7 @@ def test_values(tmp_path):
             "WRITE_NFO": "0",
             "DEBUG_ACCESS": "1",
             "VIDEO_FORMAT": "bv*[height<=720]+ba/b",
+            "COOKIES_FILE": "/cookies/cookies.txt",
         }
     )
     assert c.data_dir == tmp_path
@@ -117,3 +119,4 @@ def test_values(tmp_path):
     assert c.write_nfo is False
     assert c.debug_access is True
     assert c.video_format == "bv*[height<=720]+ba/b"
+    assert c.cookies_file == "/cookies/cookies.txt"

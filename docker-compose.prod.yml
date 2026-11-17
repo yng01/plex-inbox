@@ -66,6 +66,10 @@ services:
       DATA_DIR: /data
     volumes:
       - ${DATA_DIR:-./data}:/data
+      # Optional: mount a YouTube cookies.txt so the bot can fetch full/HD
+      # formats for "Made for Kids" / restricted videos (set COOKIES_FILE
+      # accordingly in .env).
+      # - ./cookies.txt:/cookies/cookies.txt:ro
       # Read-only view of bot-api's received files, at the exact path it reports
       # in getFile responses — downloads become local copies (no-op when empty).
       - bot-api-data:/srv/telegram-bot-api:ro

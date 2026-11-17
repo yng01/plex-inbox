@@ -134,6 +134,15 @@ async def test_run_probe_success():
     assert "youtube:player_client=default,android" in sp.cmds[0]
 
 
+async def test_run_probe_passes_cookies_file():
+    sp = FakeProbeSpawner(stdout=json.dumps(VIDEO_JSON))
+    await run_probe(
+        sp, "https://youtube.com/watch?v=abc123", cookies_file="/c/cookies.txt"
+    )
+    assert "--cookies" in sp.cmds[0]
+    assert "/c/cookies.txt" in sp.cmds[0]
+
+
 async def test_run_probe_error_classification():
     sp = FakeProbeSpawner(
         stdout="", stderr="ERROR: This video is private", returncode=1

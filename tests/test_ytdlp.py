@@ -266,6 +266,15 @@ def test_cmd_concurrent_fragments_from_config(tmp_path):
     assert cmd[cmd.index("--concurrent-fragments") + 1] == "8"
 
 
+def test_cmd_cookies_file(tmp_path):
+    cfg = make_config(tmp_path, COOKIES_FILE="/cookies/cookies.txt")
+    mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())
+    job = mgr.enqueue(make_info(), requestor="ali", audio_mode="orig")
+    cmd = mgr._cmd(job)
+    assert "--cookies" in cmd
+    assert cmd[cmd.index("--cookies") + 1] == "/cookies/cookies.txt"
+
+
 def test_cmd_best_mode_omits_multistreams(tmp_path):
     cfg = make_config(tmp_path)
     mgr = DownloadManager(cfg, Archive(cfg.data_dir), spawner=RecordingSpawner())

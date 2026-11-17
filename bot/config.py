@@ -101,6 +101,9 @@ class Config:
     default_lang: str = "en"
     debug_access: bool = False
     video_format: str | None = None
+    # Optional: path to a Netscape cookies.txt so YouTube serves the full (HD)
+    # format set for age/region-restricted or "Made for Kids" videos.
+    cookies_file: str | None = None
     # Optional: route all Bot API traffic (incl. file downloads) through a local
     # Bot API Server — required to receive uploaded files larger than 20 MB.
     bot_api_base_url: str | None = None
@@ -173,6 +176,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         default_lang=default_lang,
         debug_access=_flag(e.get("DEBUG_ACCESS"), "DEBUG_ACCESS", False),
         video_format=video_format,
+        cookies_file=(e.get("COOKIES_FILE") or "").strip() or None,
         bot_api_base_url=_base_url("TELEGRAM_BOT_API_BASE_URL"),
         bot_api_base_file_url=_base_url("TELEGRAM_BOT_API_BASE_FILE_URL"),
     )

@@ -677,11 +677,15 @@ class DownloadManager:
         lang = job.info.language if job.info is not None else None
         fmt = format_args(self.config.video_format, job.audio_mode, lang, job.quality)
         out = job.target_dir / (job.base + ".%(ext)s")
+        cookies = (
+            ["--cookies", self.config.cookies_file] if self.config.cookies_file else []
+        )
         return [
             self.ytdlp_bin,
             "--no-playlist",
             "--newline",
             "--no-colors",
+            *cookies,
             "--progress-delta",
             "1",
             "--progress-template",
